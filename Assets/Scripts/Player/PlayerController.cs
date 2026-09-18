@@ -1,104 +1,163 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
+// Physical third-person movement on a CharacterController:
+// camera-relative input, acceleration/deceleration, Unity gravity, ground checks and slope handling.
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
     [Header("Movement")]
-    public float moveSpeed = 7f;
-    public float acceleration = 60f;
-    public float airControl = 0.35f;
-    public float groundDamping = 9f;
-    public float airDamping = 1.2f;
-    public float gravity = -26f;
-    public float jumpSpeed = 9.2f;
-    public float coyoteTime = 0.12f;
-    public float turnSpeed = 12f;
+    public float walkSpeed = 3.4f;
+    public float runSpeed = 5.8f;
+    [Tooltip("How fast the character reaches full speed (m/s per second).")]
+    public float acceleration = 24f;
+    [Tooltip("How fast the character stops when you let go (m/s per second).")]
+    public float deceleration = 32f;
+    [Tooltip("Degrees per second the body turns toward the movement direction.")]
+    public float turnSpeed = 720f;
 
-    [Header("Input")]
-    public InputActionAsset inputActions;
+    [Header("Gravity")]
+    [Tooltip("Multiplier on Physics.gravity. Slightly above 1 feels less floaty for a game character.")]
+    public float gravityMultiplier = 2f;
+    [Tooltip("Small downward speed while grounded so the character hugs slopes and steps.")]
+    public float groundStickSpeed = 3f;
+    public float maxFallSpeed = 30f;
+
+    [Header("Ground Check")]
+    public LayerMask groundLayers = ~0;
+    public float groundCheckDistance = 0.2f;
+
+    [Header("Slopes")]
+    [Tooltip("Speed the character slides down slopes steeper than the CharacterController's Slope Limit.")]
+    public float steepSlideSpeed = 5f;
+
+    public bool ControlEnabled { get; set; } = true;
+    public Vector3 Velocity => horizontalVelocity + Vector3.up * verticalSpeed;
+    public float HorizontalSpeed => horizontalVelocity.magnitude;
+    public bool IsGrounded { get; private set; }
+    public bool IsRunning { get; private set; }
+    public Vector3 GroundNormal { get; private set; } = Vector3.up;
+    public float TurnRate { get; private set; }
+    // 0 = idle, 0.5 = walking, 1 = running. Used by the animator.
+    public float NormalizedSpeed => HorizontalSpeed <= walkSpeed
+        ? 0.5f * HorizontalSpeed / walkSpeed
+        : 0.5f + 0.5f * Mathf.InverseLerp(walkSpeed, runSpeed, HorizontalSpeed);
+    [HideInInspector] public float speedMultiplier = 1f;
 
     CharacterController controller;
-    InputAction moveAction;
-    InputAction jumpAction;
-
-    Vector3 velocity;
-    float timeSinceGrounded = 99f;
-    bool jumpQueued;
-
-    public bool IsGrounded { get; private set; }
-    public float HorizontalSpeed => new Vector2(velocity.x, velocity.z).magnitude;
+    Vector3 horizontalVelocity;
+    float verticalSpeed;
+    Vector3 impulse;
+    float lockTimer;
+    Vector3? forcedFacing;
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
-        var map = inputActions.FindActionMap("Player", true);
-        moveAction = map.FindAction("Move", true);
-        jumpAction = map.FindAction("Jump", true);
     }
 
-    void OnEnable()
+    // Stops movement input for a moment (prayer, radio repair, being hit).
+    public void LockMovement(float seconds) => lockTimer = Mathf.Max(lockTimer, seconds);
+    public void UnlockMovement() => lockTimer = 0f;
+    public bool MovementLocked => lockTimer > 0f || !ControlEnabled;
+
+    public void AddImpulse(Vector3 velocityChange)
     {
-        moveAction.Enable();
-        jumpAction.Enable();
-        jumpAction.performed += OnJump;
+        velocityChange.y = 0f;
+        impulse += velocityChange;
     }
 
-    void OnDisable()
+    public void FaceTowards(Vector3 worldPoint)
     {
-        jumpAction.performed -= OnJump;
-        moveAction.Disable();
-        jumpAction.Disable();
+        Vector3 d = worldPoint - transform.position;
+        d.y = 0f;
+        if (d.sqrMagnitude > 0.001f) forcedFacing = d.normalized;
     }
 
-    void OnJump(InputAction.CallbackContext ctx) => jumpQueued = true;
+    // Moves the character instantly (used by restart/teleport helpers).
+    public void Teleport(Vector3 position, float yaw)
+    {
+        controller.enabled = false;
+        transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
+        controller.enabled = true;
+        horizontalVelocity = impulse = Vector3.zero;
+        verticalSpeed = 0f;
+    }
 
     void Update()
     {
-        Vector2 input = moveAction.ReadValue<Vector2>();
+        float dt = Time.deltaTime;
+        if (dt <= 0f) return;
+        lockTimer = Mathf.Max(0f, lockTimer - dt);
 
+        var input = InputReader.Instance;
+        Vector2 move = MovementLocked ? Vector2.zero : input.Move;
+
+        // Input is relative to where the camera looks, flattened onto the ground.
         Transform cam = Camera.main ? Camera.main.transform : transform;
-        Vector3 camForward = cam.forward; camForward.y = 0f; camForward.Normalize();
-        Vector3 camRight = cam.right; camRight.y = 0f; camRight.Normalize();
-        Vector3 desiredDir = camForward * input.y + camRight * input.x;
-        if (desiredDir.sqrMagnitude > 1f) desiredDir.Normalize();
+        Vector3 camForward = Vector3.ProjectOnPlane(cam.forward, Vector3.up).normalized;
+        Vector3 camRight = Vector3.ProjectOnPlane(cam.right, Vector3.up).normalized;
+        Vector3 desiredDir = camForward * move.y + camRight * move.x;
+        float inputAmount = Mathf.Clamp01(desiredDir.magnitude);
+        if (inputAmount > 0.001f) desiredDir /= desiredDir.magnitude;
 
-        IsGrounded = controller.isGrounded;
-        timeSinceGrounded = IsGrounded ? 0f : timeSinceGrounded + Time.deltaTime;
+        IsRunning = input.Sprint && inputAmount > 0.1f && !MovementLocked;
+        float targetSpeed = (IsRunning ? runSpeed : walkSpeed) * inputAmount * speedMultiplier;
+        Vector3 desiredVelocity = desiredDir * targetSpeed;
 
-        Vector3 desiredVel = desiredDir * moveSpeed;
-        float control = IsGrounded ? 1f : airControl;
-        Vector3 horizVel = new Vector3(velocity.x, 0f, velocity.z);
-        horizVel = Vector3.MoveTowards(horizVel, desiredVel, acceleration * control * Time.deltaTime);
+        float rate = desiredVelocity.sqrMagnitude > horizontalVelocity.sqrMagnitude ? acceleration : deceleration;
+        horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, desiredVelocity, rate * dt);
 
-        if (desiredDir.sqrMagnitude < 0.01f)
+        CheckGround();
+
+        // Slopes: follow walkable slopes smoothly, slide off ones that are too steep.
+        Vector3 planarMove = horizontalVelocity;
+        float slopeAngle = Vector3.Angle(GroundNormal, Vector3.up);
+        bool tooSteep = IsGrounded && slopeAngle > controller.slopeLimit + 1f;
+        if (IsGrounded && !tooSteep && planarMove.sqrMagnitude > 0.0001f)
         {
-            float damp = IsGrounded ? groundDamping : airDamping;
-            horizVel *= Mathf.Max(0f, 1f - damp * Time.deltaTime);
+            planarMove = Vector3.ProjectOnPlane(planarMove, GroundNormal).normalized * planarMove.magnitude;
+        }
+        else if (tooSteep)
+        {
+            Vector3 downhill = Vector3.ProjectOnPlane(Vector3.down, GroundNormal).normalized;
+            planarMove += downhill * steepSlideSpeed;
         }
 
-        velocity.x = horizVel.x;
-        velocity.z = horizVel.z;
+        // Gravity comes from the physics settings, not from moving the transform by hand.
+        if (IsGrounded && !tooSteep && verticalSpeed <= 0f) verticalSpeed = -groundStickSpeed;
+        else verticalSpeed = Mathf.Max(verticalSpeed + Physics.gravity.y * gravityMultiplier * dt, -maxFallSpeed);
 
-        if (IsGrounded && velocity.y < 0f) velocity.y = -2f;
-        velocity.y += gravity * Time.deltaTime;
+        impulse = Vector3.MoveTowards(impulse, Vector3.zero, 14f * dt);
 
-        if (jumpQueued)
+        controller.Move((planarMove + impulse + Vector3.up * verticalSpeed) * dt);
+
+        UpdateFacing(dt);
+    }
+
+    void CheckGround()
+    {
+        float radius = controller.radius * 0.95f;
+        Vector3 origin = transform.position + controller.center + Vector3.down * (controller.height * 0.5f - controller.radius);
+        bool hit = Physics.SphereCast(origin + Vector3.up * 0.05f, radius, Vector3.down, out RaycastHit info,
+            groundCheckDistance + controller.skinWidth + 0.05f, groundLayers, QueryTriggerInteraction.Ignore);
+
+        IsGrounded = controller.isGrounded || hit;
+        GroundNormal = hit ? info.normal : Vector3.up;
+    }
+
+    void UpdateFacing(float dt)
+    {
+        Vector3 faceDir = forcedFacing ?? horizontalVelocity;
+        faceDir.y = 0f;
+        float before = transform.eulerAngles.y;
+
+        if (faceDir.sqrMagnitude > 0.04f || (forcedFacing.HasValue && faceDir.sqrMagnitude > 0.0001f))
         {
-            if (IsGrounded || timeSinceGrounded < coyoteTime)
-            {
-                velocity.y = jumpSpeed;
-                timeSinceGrounded = 99f;
-            }
-            jumpQueued = false;
+            Quaternion target = Quaternion.LookRotation(faceDir.normalized, Vector3.up);
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, target, turnSpeed * dt);
+            if (forcedFacing.HasValue && Quaternion.Angle(transform.rotation, target) < 2f) forcedFacing = null;
         }
 
-        controller.Move(velocity * Time.deltaTime);
-
-        if (desiredDir.sqrMagnitude > 0.01f)
-        {
-            float yaw = Mathf.Atan2(desiredDir.x, desiredDir.z) * Mathf.Rad2Deg;
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.Euler(0f, yaw, 0f), turnSpeed * Time.deltaTime);
-        }
+        TurnRate = Mathf.DeltaAngle(before, transform.eulerAngles.y) / dt;
     }
 }
