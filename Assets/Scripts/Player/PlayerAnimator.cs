@@ -157,6 +157,8 @@ public static class FootstepSurface
         if (!Physics.Raycast(position + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, 1.5f, groundMask, QueryTriggerInteraction.Ignore))
             return Sfx.Footstep;
 
+        Sfx target = Sfx.FootstepDirt;
+
         if (hit.collider is TerrainCollider tc)
         {
             var data = tc.terrainData;
@@ -166,13 +168,18 @@ public static class FootstepSurface
             float[,,] w = data.GetAlphamaps(x, z, 1, 1);
             int best = 0;
             for (int i = 1; i < w.GetLength(2); i++) if (w[0, 0, i] > w[0, 0, best]) best = i;
-            return best == 1 ? Sfx.FootstepDirt : best == 2 ? Sfx.FootstepLeaves : Sfx.Footstep;
+            target = best == 1 ? Sfx.FootstepDirt : best == 2 ? Sfx.FootstepLeaves : Sfx.Footstep;
+        }
+        else
+        {
+            var r = hit.collider.GetComponent<Renderer>();
+            string mat = r && r.sharedMaterial ? r.sharedMaterial.name : "";
+            if (mat.Contains("Wood") || mat.Contains("Roof")) target = Sfx.FootstepWood;
+            else if (mat.Contains("Stone") || mat.Contains("Rock") || mat.Contains("Metal")) target = Sfx.FootstepStone;
+            else target = Sfx.FootstepDirt;
         }
 
-        var r = hit.collider.GetComponent<Renderer>();
-        string mat = r && r.sharedMaterial ? r.sharedMaterial.name : "";
-        if (mat.Contains("Wood") || mat.Contains("Roof")) return Sfx.FootstepWood;
-        if (mat.Contains("Stone") || mat.Contains("Rock") || mat.Contains("Metal")) return Sfx.FootstepStone;
-        return Sfx.FootstepDirt;
+        // Safe fallback: if the specific clip is missing, return the default footstep
+        return AudioManager.GetClip(target) != null ? target : Sfx.Footstep;
     }
 }
