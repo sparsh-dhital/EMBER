@@ -13,6 +13,10 @@ public class CameraController : MonoBehaviour
     public CinemachineBasicMultiChannelPerlin noise;
     public PlayerController player;
     public LanternFuel fuel;
+    [Tooltip("The point the camera orbits (a child of the player). Lowered while crawling.")]
+    public Transform followTarget;
+    public float standTargetHeight = 1.55f;
+    public float crawlTargetHeight = 0.75f;
 
     [Header("Orbit")]
     public float minPitch = -8f;
@@ -37,6 +41,9 @@ public class CameraController : MonoBehaviour
     [Tooltip("Extra handheld sway as the lantern dies — nerves.")]
     public float lowFuelNoise = 0.7f;
     public float shakeDecay = 2.5f;
+
+    [Tooltip("Off while the first-person camera owns look input.")]
+    public bool inputEnabled = true;
 
     Vector2 smoothedLook;
     float lastLookTime;
@@ -78,16 +85,19 @@ public class CameraController : MonoBehaviour
         float dt = Time.unscaledDeltaTime;
         bool active = GameManager.Instance == null || GameManager.Instance.IsGameplayActive;
 
-        Vector2 look = active ? InputReader.Instance.LookDegrees : Vector2.zero;
+        Vector2 look = active && inputEnabled ? InputReader.Instance.LookDegrees : Vector2.zero;
         if (look.sqrMagnitude > 0.0001f) lastLookTime = Time.unscaledTime;
         smoothedLook = Vector2.Lerp(smoothedLook, look, 1f - Mathf.Exp(-lookSharpness * dt));
 
-        if (orbit && active)
+        if (orbit && active && inputEnabled)
         {
             orbit.HorizontalAxis.Value = Mathf.Repeat(orbit.HorizontalAxis.Value + smoothedLook.x + 180f, 360f) - 180f;
             orbit.VerticalAxis.Value = Mathf.Clamp(orbit.VerticalAxis.Value - smoothedLook.y, minPitch, maxPitch);
             Recenter(Time.deltaTime);
         }
+
+        if (followTarget && player)
+            followTarget.localPosition = new Vector3(0f, Mathf.Lerp(standTargetHeight, crawlTargetHeight, player.CrawlBlend), 0f);
 
         UpdateLens(dt);
         UpdateNoise(dt);

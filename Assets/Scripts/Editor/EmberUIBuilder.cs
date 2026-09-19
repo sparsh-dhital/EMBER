@@ -259,8 +259,34 @@ public static class EmberUIBuilder
         var prb = pray.gameObject.AddComponent<TouchButton>();
         prb.action = TouchButton.Action.Pray;
         prb.pressVisual = pray;
+        // Pray sits left of the action cluster: it is rare, so it must never be hit by accident.
+        pray.anchoredPosition = new Vector2(-560f, 190f);
+
+        // Action cluster around the right thumb, spaced so neighbouring buttons are not pressed by mistake.
+        interact.anchoredPosition = new Vector2(-370f, 330f);
+        interact.sizeDelta = new Vector2(130f, 130f);
+        var attack = RoundButton("AttackButton", rootRect, BR, new Vector2(-175f, 205f), 160f, "SWORD", Warm, TouchButton.Action.Attack, out tc.attackLabel);
+        tc.attackButton = attack.gameObject.AddComponent<CanvasGroup>();
+        RoundButton("JumpButton", rootRect, BR, new Vector2(-385f, 145f), 120f, "JUMP", Cream, TouchButton.Action.Jump, out _);
+        RoundButton("CrawlButton", rootRect, BR, new Vector2(-165f, 420f), 110f, "CRAWL", Cream, TouchButton.Action.Crawl, out tc.crawlLabel);
+        // View toggle sits beside pause, away from the thumbs.
+        RoundButton("ViewButton", rootRect, TR, new Vector2(-140f, -38f), 70f, "VIEW", Cream, TouchButton.Action.ToggleCamera, out var viewLabel);
+        viewLabel.fontSize = 16f;
 
         return tc;
+    }
+
+    static RectTransform RoundButton(string name, Transform parent, Vector2 anchor, Vector2 pos, float size, string label, Color tint, TouchButton.Action action, out TMP_Text text)
+    {
+        var r = Place(Rect(name, parent), anchor, C, pos, new Vector2(size, size));
+        Stretch(Img("Bg", r, "S_Circle", new Color(0f, 0f, 0f, 0.3f), true).rectTransform);
+        Stretch(Img("Ring", r, "S_Ring", new Color(tint.r, tint.g, tint.b, 0.55f)).rectTransform);
+        text = Txt("Label", r, label, Mathf.Round(size * 0.16f), new Color(tint.r, tint.g, tint.b, 0.9f), TextAlignmentOptions.Center, semibold, 4f);
+        Stretch(text.rectTransform);
+        var b = r.gameObject.AddComponent<TouchButton>();
+        b.action = action;
+        b.pressVisual = r;
+        return r;
     }
 
     // ------------------------------------------------------------------ menus

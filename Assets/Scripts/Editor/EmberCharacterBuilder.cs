@@ -343,218 +343,423 @@ public static class EmberCharacterBuilder
         };
     }
 
+    // Locomotion clips are authored at these native speeds (m/s) and blended by the real speed, so feet don't slide.
+    public const float WalkSpeed = 1.8f, JogSpeed = 3.6f, RunSpeed = 5.8f, CrawlSpeed = 1.1f;
+    // Length of the sword swing clip (seconds). SwordController times its hit window inside it.
+    public const float AttackLength = 0.75f;
+
+    static Pose Merge(Pose basePose, Pose overrides)
+    {
+        var p = new Pose();
+        foreach (var kv in basePose) p[kv.Key] = kv.Value;
+        foreach (var kv in overrides) p[kv.Key] = kv.Value;
+        return p;
+    }
+
+    static Pose LanternArm(float x = -20f, float fore = -38f, float hand = 10f, float z = 12f)
+    {
+        return new Pose { [UAR] = new Vector3(x, 0f, z), [FAR] = new Vector3(fore, 0f, 0f), [HAR] = new Vector3(hand, 0f, 0f) };
+    }
+
+    static Pose CrawlBase(float breathe)
+    {
+        return new Pose
+        {
+            [H] = new Vector3(78f, 0f, 0f),
+            [SP] = new Vector3(4f + breathe, 0f, 0f),
+            [CH] = new Vector3(breathe * 0.5f, 0f, 0f),
+            [NK] = new Vector3(-52f, 0f, 0f),
+            [HD] = new Vector3(-12f, 0f, 0f),
+            [UAL] = new Vector3(-76f, 0f, -4f), [FAL] = new Vector3(-6f, 0f, 0f), [HAL] = new Vector3(55f, 0f, 0f),
+            [UAR] = new Vector3(-104f, 0f, 8f), [FAR] = new Vector3(-16f, 0f, 0f), [HAR] = new Vector3(30f, 0f, 0f),
+            [ULL] = new Vector3(-78f, 0f, -3f), [LLL] = new Vector3(92f, 0f, 0f), [FTL] = new Vector3(38f, 0f, 0f),
+            [ULR] = new Vector3(-78f, 0f, 3f), [LLR] = new Vector3(92f, 0f, 0f), [FTR] = new Vector3(38f, 0f, 0f),
+        };
+    }
+
     public static AnimatorController BuildAnimatorController()
     {
         EmberArt.CreateFolderRecursive(AnimDir);
         const float TAU = Mathf.PI * 2f;
+        float Pos(float v) => Mathf.Max(0f, v);
 
-        var idle = Cycle("Idle", 3.2f, 12, p =>
+        // ---------------- idle: breathing and a slow weight shift
+        var idle = Cycle("Idle", 3.6f, 12, p =>
         {
             float s = Mathf.Sin(p * TAU);
             var pose = IdlePose(s);
+            pose[H] = new Vector3(0f, 0f, 1.2f * Mathf.Sin(p * TAU + 0.6f));
             pose[HD] = new Vector3(0f, 5f * Mathf.Sin(p * TAU + 1f), 0f);
             return (pose, 0.98f - 0.006f * (1f - Mathf.Cos(p * TAU)));
         });
 
-        var walk = Cycle("Walk", 0.8f, 16, p =>
+        // ---------------- walk (1.8 m/s): heel strike, toe-off, counter-rotating shoulders, steady head
+        var walk = Cycle("Walk", 0.98f, 20, p =>
         {
             float s = Mathf.Sin(p * TAU), c = Mathf.Cos(p * TAU);
-            var pose = new Pose
+            var pose = Merge(new Pose
             {
-                [H] = new Vector3(0f, 5f * s, 0f),
+                [H] = new Vector3(0f, 5f * s, -1.5f * Mathf.Sin(2f * p * TAU)),
                 [SP] = new Vector3(3f, -7f * s, 0f),
-                [CH] = new Vector3(3f, 0f, 0f),
+                [CH] = new Vector3(3f, -3f * s, 1.5f * s),
                 [NK] = new Vector3(-2f, 0f, 0f),
-                [UAL] = new Vector3(22f * s + 2f, 0f, -8f),
-                [FAL] = new Vector3(-18f - 12f * Mathf.Max(0f, -s), 0f, 0f),
-                [UAR] = new Vector3(-20f - 5f * s, 0f, 12f),
-                [FAR] = new Vector3(-38f, 0f, 0f),
-                [HAR] = new Vector3(10f, 0f, 0f),
-                [ULL] = new Vector3(-26f * s - 3f, 0f, 0f),
-                [LLL] = new Vector3(6f + 48f * Mathf.Pow(Mathf.Max(0f, c), 2f), 0f, 0f),
-                [FTL] = new Vector3(-8f * s, 0f, 0f),
-                [ULR] = new Vector3(26f * s - 3f, 0f, 0f),
-                [LLR] = new Vector3(6f + 48f * Mathf.Pow(Mathf.Max(0f, -c), 2f), 0f, 0f),
-                [FTR] = new Vector3(8f * s, 0f, 0f),
-            };
+                [HD] = new Vector3(0f, 8f * s, 0f),
+                [UAL] = new Vector3(20f * s + 2f, 0f, -7f),
+                [FAL] = new Vector3(-16f - 14f * Pos(-s), 0f, 0f),
+                [ULL] = new Vector3(-28f * s - 4f, 0f, 0f),
+                [LLL] = new Vector3(6f + 52f * Mathf.Pow(Pos(c), 2f) + 8f * Mathf.Pow(Pos(-c), 4f), 0f, 0f),
+                [FTL] = new Vector3(-10f * Pos(s) + 18f * Mathf.Pow(Pos(-s), 2f), 0f, 0f),
+                [ULR] = new Vector3(28f * s - 4f, 0f, 0f),
+                [LLR] = new Vector3(6f + 52f * Mathf.Pow(Pos(-c), 2f) + 8f * Mathf.Pow(Pos(c), 4f), 0f, 0f),
+                [FTR] = new Vector3(-10f * Pos(-s) + 18f * Mathf.Pow(Pos(s), 2f), 0f, 0f),
+            }, LanternArm(-20f - 4f * s, -38f, 10f));
             return (pose, 0.965f + 0.022f * Mathf.Cos(2f * p * TAU));
         });
 
-        var run = Cycle("Run", 0.62f, 16, p =>
+        // ---------------- jog (3.6 m/s): bent arms, more knee lift, slight lean
+        var jog = Cycle("Jog", 0.66f, 20, p =>
         {
             float s = Mathf.Sin(p * TAU), c = Mathf.Cos(p * TAU);
-            var pose = new Pose
+            var pose = Merge(new Pose
             {
-                [H] = new Vector3(0f, 7f * s, 0f),
-                [SP] = new Vector3(8f, -10f * s, 0f),
-                [CH] = new Vector3(6f, 0f, 0f),
-                [NK] = new Vector3(-8f, 0f, 0f),
-                [UAL] = new Vector3(45f * s, 0f, -10f),
-                [FAL] = new Vector3(-75f, 0f, 0f),
-                [UAR] = new Vector3(-30f - 10f * s, 0f, 14f),
-                [FAR] = new Vector3(-62f, 0f, 0f),
-                [HAR] = new Vector3(20f, 0f, 0f),
-                [ULL] = new Vector3(-42f * s - 8f, 0f, 0f),
-                [LLL] = new Vector3(14f + 80f * Mathf.Pow(Mathf.Max(0f, c), 1.5f), 0f, 0f),
-                [FTL] = new Vector3(-12f * s, 0f, 0f),
-                [ULR] = new Vector3(42f * s - 8f, 0f, 0f),
-                [LLR] = new Vector3(14f + 80f * Mathf.Pow(Mathf.Max(0f, -c), 1.5f), 0f, 0f),
-                [FTR] = new Vector3(12f * s, 0f, 0f),
-            };
-            return (pose, 0.93f + 0.045f * Mathf.Cos(2f * p * TAU));
+                [H] = new Vector3(0f, 6f * s, -2f * Mathf.Sin(2f * p * TAU)),
+                [SP] = new Vector3(7f, -9f * s, 0f),
+                [CH] = new Vector3(4f, -3f * s, 2f * s),
+                [NK] = new Vector3(-6f, 0f, 0f),
+                [HD] = new Vector3(0f, 9f * s, 0f),
+                [UAL] = new Vector3(38f * s, 0f, -9f),
+                [FAL] = new Vector3(-70f - 8f * Pos(-s), 0f, 0f),
+                [ULL] = new Vector3(-38f * s - 8f, 0f, 0f),
+                [LLL] = new Vector3(12f + 75f * Mathf.Pow(Pos(c), 1.6f), 0f, 0f),
+                [FTL] = new Vector3(-8f * Pos(s) + 24f * Mathf.Pow(Pos(-s), 2f), 0f, 0f),
+                [ULR] = new Vector3(38f * s - 8f, 0f, 0f),
+                [LLR] = new Vector3(12f + 75f * Mathf.Pow(Pos(-c), 1.6f), 0f, 0f),
+                [FTR] = new Vector3(-8f * Pos(-s) + 24f * Mathf.Pow(Pos(s), 2f), 0f, 0f),
+            }, LanternArm(-26f - 7f * s, -55f, 18f, 13f));
+            return (pose, 0.95f + 0.035f * Mathf.Cos(2f * p * TAU));
         });
 
-        // Hit reaction: a sharp flinch back, then recover.
+        // ---------------- run (5.8 m/s): knee drive, strong arm swing, forward lean
+        var run = Cycle("Run", 0.6f, 20, p =>
+        {
+            float s = Mathf.Sin(p * TAU), c = Mathf.Cos(p * TAU);
+            var pose = Merge(new Pose
+            {
+                [H] = new Vector3(0f, 7f * s, -2.5f * Mathf.Sin(2f * p * TAU)),
+                [SP] = new Vector3(12f, -11f * s, 0f),
+                [CH] = new Vector3(6f, -4f * s, 2.5f * s),
+                [NK] = new Vector3(-10f, 0f, 0f),
+                [HD] = new Vector3(0f, 10f * s, 0f),
+                [UAL] = new Vector3(52f * s - 5f, 0f, -10f),
+                [FAL] = new Vector3(-85f, 0f, 0f),
+                [ULL] = new Vector3(-44f * s - 12f, 0f, 0f),
+                [LLL] = new Vector3(18f + 90f * Mathf.Pow(Pos(c), 1.4f), 0f, 0f),
+                [FTL] = new Vector3(-12f * Pos(s) + 28f * Mathf.Pow(Pos(-s), 2f), 0f, 0f),
+                [ULR] = new Vector3(44f * s - 12f, 0f, 0f),
+                [LLR] = new Vector3(18f + 90f * Mathf.Pow(Pos(-c), 1.4f), 0f, 0f),
+                [FTR] = new Vector3(-12f * Pos(-s) + 28f * Mathf.Pow(Pos(s), 2f), 0f, 0f),
+            }, LanternArm(-32f - 12f * s, -68f, 22f, 14f));
+            return (pose, 0.925f + 0.05f * Mathf.Cos(2f * p * TAU));
+        });
+
+        // ---------------- jump: anticipation crouch, push-off, airborne, landing
+        var jsB = new ClipBuilder();
+        jsB.Key(0f, IdlePose(), 0.98f);
+        jsB.Key(0.08f, Merge(IdlePose(), new Pose
+        {
+            [SP] = new Vector3(14f, 0f, 0f), [NK] = new Vector3(-8f, 0f, 0f),
+            [UAL] = new Vector3(28f, 0f, -10f), [FAL] = new Vector3(-20f, 0f, 0f),
+            [ULL] = new Vector3(-28f, 0f, -3f), [LLL] = new Vector3(48f, 0f, 0f), [FTL] = new Vector3(-16f, 0f, 0f),
+            [ULR] = new Vector3(-28f, 0f, 3f), [LLR] = new Vector3(48f, 0f, 0f), [FTR] = new Vector3(-16f, 0f, 0f),
+        }), 0.86f);
+        jsB.Key(0.16f, Merge(IdlePose(), new Pose
+        {
+            [SP] = new Vector3(4f, 0f, 0f),
+            [UAL] = new Vector3(-45f, 0f, -14f), [FAL] = new Vector3(-30f, 0f, 0f),
+            [ULL] = new Vector3(-6f, 0f, 0f), [LLL] = new Vector3(6f, 0f, 0f), [FTL] = new Vector3(22f, 0f, 0f),
+            [ULR] = new Vector3(-4f, 0f, 0f), [LLR] = new Vector3(6f, 0f, 0f), [FTR] = new Vector3(22f, 0f, 0f),
+        }), 0.98f);
+        var jumpStart = jsB.Build("JumpStart", false);
+
+        var airRise = Cycle("AirRise", 0.8f, 8, p =>
+        {
+            float s = Mathf.Sin(p * TAU);
+            var pose = Merge(new Pose
+            {
+                [SP] = new Vector3(6f, 0f, 0f),
+                [UAL] = new Vector3(-30f + 4f * s, 0f, -25f), [FAL] = new Vector3(-35f, 0f, 0f),
+                [ULL] = new Vector3(-38f, 0f, -3f), [LLL] = new Vector3(58f, 0f, 0f), [FTL] = new Vector3(10f, 0f, 0f),
+                [ULR] = new Vector3(-14f, 0f, 3f), [LLR] = new Vector3(34f, 0f, 0f), [FTR] = new Vector3(14f, 0f, 0f),
+            }, LanternArm(-36f, -50f, 16f, 20f));
+            return (pose, 0.98f);
+        });
+        var airFall = Cycle("AirFall", 0.8f, 8, p =>
+        {
+            float s = Mathf.Sin(p * TAU);
+            var pose = Merge(new Pose
+            {
+                [SP] = new Vector3(2f, 0f, 0f), [NK] = new Vector3(14f, 0f, 0f),
+                [UAL] = new Vector3(-48f + 5f * s, 0f, -45f), [FAL] = new Vector3(-20f, 0f, 0f),
+                [ULL] = new Vector3(-22f, 0f, -4f), [LLL] = new Vector3(22f, 0f, 0f), [FTL] = new Vector3(-6f, 0f, 0f),
+                [ULR] = new Vector3(-8f, 0f, 4f), [LLR] = new Vector3(14f, 0f, 0f), [FTR] = new Vector3(-6f, 0f, 0f),
+            }, LanternArm(-44f, -40f, 12f, 32f));
+            return (pose, 0.98f);
+        });
+
+        var landB = new ClipBuilder();
+        landB.Key(0f, Merge(IdlePose(), new Pose { [ULL] = new Vector3(-20f, 0f, -4f), [LLL] = new Vector3(20f, 0f, 0f), [ULR] = new Vector3(-8f, 0f, 4f), [LLR] = new Vector3(14f, 0f, 0f) }), 0.98f);
+        landB.Key(0.07f, Merge(IdlePose(), new Pose
+        {
+            [SP] = new Vector3(18f, 0f, 0f), [CH] = new Vector3(6f, 0f, 0f), [NK] = new Vector3(-10f, 0f, 0f),
+            [UAL] = new Vector3(-20f, 0f, -18f), [FAL] = new Vector3(-30f, 0f, 0f),
+            [ULL] = new Vector3(-42f, 0f, -4f), [LLL] = new Vector3(72f, 0f, 0f), [FTL] = new Vector3(-24f, 0f, 0f),
+            [ULR] = new Vector3(-36f, 0f, 4f), [LLR] = new Vector3(66f, 0f, 0f), [FTR] = new Vector3(-22f, 0f, 0f),
+        }), 0.8f);
+        landB.Key(0.3f, IdlePose(), 0.98f);
+        var land = landB.Build("Land", false);
+
+        // ---------------- crawl: hands and knees, lantern held clear of the ground
+        var crawlIdle = Cycle("CrawlIdle", 2.4f, 8, p => (CrawlBase(Mathf.Sin(p * TAU) * 1.5f), 0.52f));
+        var crawlMove = Cycle("CrawlMove", 0.95f, 16, p =>
+        {
+            float s = Mathf.Sin(p * TAU), c = Mathf.Cos(p * TAU);
+            var pose = CrawlBase(0f);
+            pose[H] = new Vector3(78f, 5f * s, 0f);
+            pose[SP] = new Vector3(4f, -6f * s, 0f);
+            pose[UAL] = new Vector3(-76f - 14f * s, 0f, -4f);
+            pose[FAL] = new Vector3(-6f - 22f * Mathf.Pow(Pos(c), 2f), 0f, 0f);
+            pose[UAR] = new Vector3(-104f + 4f * s, 0f, 8f);
+            pose[ULL] = new Vector3(-78f + 12f * s, 0f, -3f);
+            pose[LLL] = new Vector3(92f + 10f * Pos(-c), 0f, 0f);
+            pose[ULR] = new Vector3(-78f - 12f * s, 0f, 3f);
+            pose[LLR] = new Vector3(92f + 10f * Pos(c), 0f, 0f);
+            return (pose, 0.52f + 0.02f * Mathf.Cos(2f * p * TAU));
+        });
+
+        // ---------------- hit reaction
         var hitB = new ClipBuilder();
         hitB.Key(0f, IdlePose(), 0.98f);
-        var flinch = IdlePose();
-        flinch[SP] = new Vector3(-8f, 6f, 0f);
-        flinch[CH] = new Vector3(-14f, 0f, 4f);
-        flinch[NK] = new Vector3(-14f, 0f, 0f);
-        flinch[UAL] = new Vector3(-40f, 0f, -28f);
-        flinch[FAL] = new Vector3(-70f, 0f, 0f);
-        flinch[ULL] = new Vector3(-12f, 0f, -4f);
-        flinch[LLL] = new Vector3(20f, 0f, 0f);
-        flinch[ULR] = new Vector3(10f, 0f, 4f);
-        flinch[LLR] = new Vector3(18f, 0f, 0f);
-        hitB.Key(0.09f, flinch, 0.94f);
+        hitB.Key(0.08f, Merge(IdlePose(), new Pose
+        {
+            [SP] = new Vector3(-10f, 8f, 0f), [CH] = new Vector3(-16f, 0f, 5f), [NK] = new Vector3(-16f, 0f, 0f),
+            [UAL] = new Vector3(-42f, 0f, -30f), [FAL] = new Vector3(-72f, 0f, 0f),
+            [ULL] = new Vector3(-14f, 0f, -4f), [LLL] = new Vector3(22f, 0f, 0f),
+            [ULR] = new Vector3(12f, 0f, 4f), [LLR] = new Vector3(20f, 0f, 0f),
+        }), 0.93f);
         hitB.Key(0.45f, IdlePose(), 0.98f);
         var hit = hitB.Build("Hit", false);
 
-        // Death: knees buckle, then the body falls forward.
+        // ---------------- death: stagger back, knees buckle, fall forward, lie still
         var dieB = new ClipBuilder();
         dieB.Key(0f, IdlePose(), 0.98f);
-        var buckle = IdlePose();
-        buckle[CH] = new Vector3(20f, 0f, 0f);
-        buckle[NK] = new Vector3(20f, 0f, 0f);
-        buckle[ULL] = new Vector3(-55f, 0f, -4f); buckle[LLL] = new Vector3(100f, 0f, 0f);
-        buckle[ULR] = new Vector3(-35f, 0f, 4f); buckle[LLR] = new Vector3(95f, 0f, 0f);
-        buckle[UAL] = new Vector3(10f, 0f, -10f); buckle[UAR] = new Vector3(0f, 0f, 14f);
-        dieB.Key(0.4f, buckle, 0.6f);
-        var fall = IdlePose();
-        fall[H] = new Vector3(70f, 0f, 0f);
-        fall[SP] = new Vector3(10f, 0f, 0f);
-        fall[NK] = new Vector3(15f, 0f, 0f);
-        fall[ULL] = new Vector3(-20f, 0f, -4f); fall[LLL] = new Vector3(60f, 0f, 0f);
-        fall[ULR] = new Vector3(-10f, 0f, 4f); fall[LLR] = new Vector3(50f, 0f, 0f);
-        fall[UAL] = new Vector3(-70f, 0f, -20f); fall[UAR] = new Vector3(-80f, 0f, 20f);
-        dieB.Key(0.9f, fall, 0.3f);
-        var lie = IdlePose();
-        lie[H] = new Vector3(86f, 0f, 0f);
-        lie[SP] = new Vector3(2f, 0f, 0f);
-        lie[NK] = new Vector3(-10f, 25f, 0f);
-        lie[ULL] = new Vector3(-6f, 0f, -6f); lie[LLL] = new Vector3(18f, 0f, 0f);
-        lie[ULR] = new Vector3(-4f, 0f, 6f); lie[LLR] = new Vector3(10f, 0f, 0f);
-        lie[UAL] = new Vector3(-150f, 0f, -25f); lie[FAL] = new Vector3(-10f, 0f, 0f);
-        lie[UAR] = new Vector3(-110f, 0f, 30f); lie[FAR] = new Vector3(-20f, 0f, 0f);
-        dieB.Key(1.5f, lie, 0.17f);
+        dieB.Key(0.14f, Merge(IdlePose(), new Pose
+        {
+            [SP] = new Vector3(-18f, 10f, 0f), [CH] = new Vector3(-12f, 0f, 4f), [NK] = new Vector3(-22f, 0f, 0f),
+            [UAL] = new Vector3(-62f, 0f, -42f), [FAL] = new Vector3(-40f, 0f, 0f),
+            [UAR] = new Vector3(-50f, 0f, 38f), [FAR] = new Vector3(-30f, 0f, 0f),
+            [ULL] = new Vector3(12f, 0f, -4f), [LLL] = new Vector3(18f, 0f, 0f),
+            [ULR] = new Vector3(-10f, 0f, 4f), [LLR] = new Vector3(14f, 0f, 0f),
+        }), 0.95f);
+        dieB.Key(0.5f, Merge(IdlePose(), new Pose
+        {
+            [CH] = new Vector3(22f, 0f, 0f), [NK] = new Vector3(24f, 0f, 0f),
+            [ULL] = new Vector3(-55f, 0f, -4f), [LLL] = new Vector3(100f, 0f, 0f),
+            [ULR] = new Vector3(-35f, 0f, 4f), [LLR] = new Vector3(95f, 0f, 0f),
+            [UAL] = new Vector3(10f, 0f, -10f), [UAR] = new Vector3(0f, 0f, 14f),
+        }), 0.6f);
+        dieB.Key(1.05f, Merge(IdlePose(), new Pose
+        {
+            [H] = new Vector3(70f, 0f, 0f), [SP] = new Vector3(10f, 0f, 0f), [NK] = new Vector3(15f, 0f, 0f),
+            [ULL] = new Vector3(-20f, 0f, -4f), [LLL] = new Vector3(60f, 0f, 0f),
+            [ULR] = new Vector3(-10f, 0f, 4f), [LLR] = new Vector3(50f, 0f, 0f),
+            [UAL] = new Vector3(-70f, 0f, -20f), [UAR] = new Vector3(-80f, 0f, 20f),
+        }), 0.3f);
+        dieB.Key(1.7f, Merge(IdlePose(), new Pose
+        {
+            [H] = new Vector3(86f, 0f, 0f), [SP] = new Vector3(2f, 0f, 0f), [NK] = new Vector3(-10f, 25f, 0f),
+            [ULL] = new Vector3(-6f, 0f, -6f), [LLL] = new Vector3(18f, 0f, 0f),
+            [ULR] = new Vector3(-4f, 0f, 6f), [LLR] = new Vector3(10f, 0f, 0f),
+            [UAL] = new Vector3(-150f, 0f, -25f), [FAL] = new Vector3(-10f, 0f, 0f),
+            [UAR] = new Vector3(-110f, 0f, 30f), [FAR] = new Vector3(-20f, 0f, 0f),
+        }), 0.17f);
         var death = dieB.Build("Death", false);
 
-        // Prayer: kneel on one knee, hands together, head bowed.
-        Pose Kneel(float breathe)
+        // ---------------- prayer: kneel on one knee, hands together, head bowed
+        Pose Kneel(float breathe) => new Pose
         {
-            return new Pose
-            {
-                [SP] = new Vector3(4f + breathe, 0f, 0f),
-                [CH] = new Vector3(4f + breathe, 0f, 0f),
-                [NK] = new Vector3(24f + breathe * 2f, 0f, 0f),
-                [HD] = new Vector3(10f, 0f, 0f),
-                [UAL] = new Vector3(-28f, -8f, 26f),
-                [FAL] = new Vector3(-105f, 0f, 0f),
-                [UAR] = new Vector3(-28f, 8f, -26f),
-                [FAR] = new Vector3(-105f, 0f, 0f),
-                [HAR] = new Vector3(20f, 0f, 0f),
-                [ULL] = new Vector3(-88f, 0f, -4f),
-                [LLL] = new Vector3(88f, 0f, 0f),
-                [FTL] = new Vector3(0f, 0f, 0f),
-                [ULR] = new Vector3(-4f, 0f, 3f),
-                [LLR] = new Vector3(96f, 0f, 0f),
-                [FTR] = new Vector3(40f, 0f, 0f),
-            };
-        }
+            [SP] = new Vector3(4f + breathe, 0f, 0f), [CH] = new Vector3(4f + breathe, 0f, 0f),
+            [NK] = new Vector3(24f + breathe * 2f, 0f, 0f), [HD] = new Vector3(10f, 0f, 0f),
+            [UAL] = new Vector3(-28f, -8f, 26f), [FAL] = new Vector3(-105f, 0f, 0f),
+            [UAR] = new Vector3(-28f, 8f, -26f), [FAR] = new Vector3(-105f, 0f, 0f), [HAR] = new Vector3(20f, 0f, 0f),
+            [ULL] = new Vector3(-88f, 0f, -4f), [LLL] = new Vector3(88f, 0f, 0f), [FTL] = Vector3.zero,
+            [ULR] = new Vector3(-4f, 0f, 3f), [LLR] = new Vector3(96f, 0f, 0f), [FTR] = new Vector3(40f, 0f, 0f),
+        };
         var enterB = new ClipBuilder();
         enterB.Key(0f, IdlePose(), 0.98f);
         enterB.Key(0.9f, Kneel(0f), 0.52f);
         var prayEnter = enterB.Build("PrayEnter", false);
-        var pray = Cycle("Pray", 3f, 8, p => (Kneel(Mathf.Sin(p * TAU) * 1.5f), 0.52f - 0.004f * Mathf.Sin(p * TAU)));
+        var pray = Cycle("Pray", 3.4f, 8, p => (Kneel(Mathf.Sin(p * TAU) * 1.2f), 0.52f - 0.004f * Mathf.Sin(p * TAU)));
 
-        // Working at the radio: crouched, hands busy.
+        // ---------------- working at the radio
         var work = Cycle("Work", 1.1f, 8, p =>
         {
             float s = Mathf.Sin(p * TAU);
             var pose = new Pose
             {
-                [SP] = new Vector3(12f, 0f, 0f),
-                [CH] = new Vector3(14f, 0f, 0f),
-                [NK] = new Vector3(18f, 0f, 0f),
-                [UAL] = new Vector3(-62f + 8f * s, 0f, 10f),
-                [FAL] = new Vector3(-45f - 10f * s, 0f, 0f),
-                [UAR] = new Vector3(-58f - 8f * s, 0f, -10f),
-                [FAR] = new Vector3(-50f + 10f * s, 0f, 0f),
+                [SP] = new Vector3(12f, 0f, 0f), [CH] = new Vector3(14f, 0f, 0f), [NK] = new Vector3(18f, 0f, 0f),
+                [UAL] = new Vector3(-62f + 8f * s, 0f, 10f), [FAL] = new Vector3(-45f - 10f * s, 0f, 0f),
+                [UAR] = new Vector3(-58f - 8f * s, 0f, -10f), [FAR] = new Vector3(-50f + 10f * s, 0f, 0f),
                 [ULL] = new Vector3(-55f, 0f, -6f), [LLL] = new Vector3(80f, 0f, 0f), [FTL] = new Vector3(-22f, 0f, 0f),
                 [ULR] = new Vector3(-40f, 0f, 6f), [LLR] = new Vector3(70f, 0f, 0f), [FTR] = new Vector3(-28f, 0f, 0f),
             };
             return (pose, 0.8f);
         });
 
-        // ---- controller
-        AnimatorController ctrl = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
-        if (ctrl) AssetDatabase.DeleteAsset(ControllerPath);
-        ctrl = AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
-        ctrl.AddParameter("Speed", AnimatorControllerParameterType.Float);
-        ctrl.AddParameter("Hit", AnimatorControllerParameterType.Trigger);
-        ctrl.AddParameter("Dead", AnimatorControllerParameterType.Bool);
-        ctrl.AddParameter("Pray", AnimatorControllerParameterType.Bool);
-        ctrl.AddParameter("Work", AnimatorControllerParameterType.Bool);
+        // ---------------- sword swing (left hand), upper body only: anticipation, strike, follow-through, recovery
+        var atkB = new ClipBuilder();
+        Pose Swing(Vector3 armL, float foreL, float spineY, float spineX, float chestY) => Merge(IdlePose(), new Pose
+        {
+            [SP] = new Vector3(spineX, spineY, 0f), [CH] = new Vector3(2f, chestY, 0f), [NK] = new Vector3(0f, -(spineY + chestY) * 0.7f, 0f),
+            [UAL] = armL, [FAL] = new Vector3(foreL, 0f, 0f), [HAL] = new Vector3(-10f, 0f, 0f),
+        });
+        atkB.Key(0f, Swing(new Vector3(4f, 0f, -7f), -16f, 0f, 2f, 0f), 0.98f);
+        atkB.Key(0.2f, Swing(new Vector3(-128f, 20f, -50f), -62f, 26f, -4f, 10f), 0.97f);
+        atkB.Key(0.32f, Swing(new Vector3(-58f, -10f, 26f), -14f, -30f, 10f, -12f), 0.95f);
+        atkB.Key(0.44f, Swing(new Vector3(-22f, 0f, 40f), -30f, -38f, 8f, -15f), 0.95f);
+        atkB.Key(AttackLength, Swing(new Vector3(4f, 0f, -7f), -16f, 0f, 2f, 0f), 0.98f);
+        var attack = atkB.Build("Attack", false);
+
+        // ================= controller
+        if (AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath)) AssetDatabase.DeleteAsset(ControllerPath);
+        var ctrl = AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
+        foreach (var f in new[] { "Speed", "MoveMul", "VerticalSpeed" }) ctrl.AddParameter(f, AnimatorControllerParameterType.Float);
+        foreach (var b in new[] { "Grounded", "Crawl", "Dead", "Pray", "Work" }) ctrl.AddParameter(b, AnimatorControllerParameterType.Bool);
+        foreach (var t in new[] { "Jump", "Land", "Hit", "Attack" }) ctrl.AddParameter(t, AnimatorControllerParameterType.Trigger);
+        var parameters = ctrl.parameters;
+        foreach (var prm in parameters)
+        {
+            if (prm.name == "Grounded") prm.defaultBool = true;
+            else if (prm.name == "MoveMul") prm.defaultFloat = 1f;
+        }
+        ctrl.parameters = parameters;
 
         var sm = ctrl.layers[0].stateMachine;
         var loco = ctrl.CreateBlendTreeInController("Locomotion", out BlendTree tree, 0);
         tree.blendParameter = "Speed";
         tree.useAutomaticThresholds = false;
         tree.AddChild(idle, 0f);
-        tree.AddChild(walk, 0.5f);
-        tree.AddChild(run, 1f);
+        tree.AddChild(walk, WalkSpeed);
+        tree.AddChild(jog, JogSpeed);
+        tree.AddChild(run, RunSpeed);
+        loco.speedParameterActive = true;
+        loco.speedParameter = "MoveMul";
         sm.defaultState = loco;
 
+        var crawlState = sm.AddState("CrawlMove");
+        var crawlTree = new BlendTree { name = "CrawlBlend", blendParameter = "Speed", useAutomaticThresholds = false };
+        AssetDatabase.AddObjectToAsset(crawlTree, ctrl);
+        crawlTree.AddChild(crawlIdle, 0f);
+        crawlTree.AddChild(crawlMove, CrawlSpeed);
+        crawlState.motion = crawlTree;
+        crawlState.speedParameterActive = true;
+        crawlState.speedParameter = "MoveMul";
+
+        var sJump = sm.AddState("JumpStart"); sJump.motion = jumpStart;
+        var sAir = sm.AddState("InAir");
+        var airTree = new BlendTree { name = "AirBlend", blendParameter = "VerticalSpeed", useAutomaticThresholds = false };
+        AssetDatabase.AddObjectToAsset(airTree, ctrl);
+        airTree.AddChild(airFall, -6f);
+        airTree.AddChild(airRise, 4f);
+        sAir.motion = airTree;
+        var sLand = sm.AddState("Land"); sLand.motion = land;
         var sHit = sm.AddState("Hit"); sHit.motion = hit;
         var sDeath = sm.AddState("Death"); sDeath.motion = death;
         var sEnter = sm.AddState("PrayEnter"); sEnter.motion = prayEnter;
         var sPray = sm.AddState("Pray"); sPray.motion = pray;
         var sWork = sm.AddState("Work"); sWork.motion = work;
 
+        AnimatorStateTransition T(AnimatorState from, AnimatorState to, float duration, bool exit = false, float exitTime = 0f)
+        {
+            var tr = from.AddTransition(to);
+            tr.duration = duration;
+            tr.hasExitTime = exit;
+            tr.exitTime = exitTime;
+            return tr;
+        }
+
         var toDeath = sm.AddAnyStateTransition(sDeath);
         toDeath.AddCondition(AnimatorConditionMode.If, 0f, "Dead");
-        toDeath.duration = 0.15f; toDeath.canTransitionToSelf = false; toDeath.hasExitTime = false;
+        toDeath.duration = 0.12f; toDeath.canTransitionToSelf = false; toDeath.hasExitTime = false;
 
         var toHit = sm.AddAnyStateTransition(sHit);
         toHit.AddCondition(AnimatorConditionMode.If, 0f, "Hit");
         toHit.AddCondition(AnimatorConditionMode.IfNot, 0f, "Dead");
+        toHit.AddCondition(AnimatorConditionMode.IfNot, 0f, "Crawl");
         toHit.duration = 0.05f; toHit.canTransitionToSelf = false; toHit.hasExitTime = false;
+        T(sHit, loco, 0.15f, true, 0.85f);
 
-        var hitBack = sHit.AddTransition(loco);
-        hitBack.hasExitTime = true; hitBack.exitTime = 0.85f; hitBack.duration = 0.15f;
+        // Jumping and falling.
+        T(loco, sJump, 0.05f).AddCondition(AnimatorConditionMode.If, 0f, "Jump");
+        T(sJump, sAir, 0.08f, true, 0.95f);
+        var walkOff = T(loco, sAir, 0.2f);
+        walkOff.AddCondition(AnimatorConditionMode.IfNot, 0f, "Grounded");
+        walkOff.AddCondition(AnimatorConditionMode.Less, -3f, "VerticalSpeed");
+        T(sAir, sLand, 0.05f).AddCondition(AnimatorConditionMode.If, 0f, "Grounded");
+        T(sLand, loco, 0.15f, true, 0.7f);
+        T(sLand, loco, 0.12f).AddCondition(AnimatorConditionMode.Greater, 3.2f, "Speed");
 
-        var toEnter = loco.AddTransition(sEnter);
-        toEnter.AddCondition(AnimatorConditionMode.If, 0f, "Pray");
-        toEnter.hasExitTime = false; toEnter.duration = 0.2f;
-        var enterToPray = sEnter.AddTransition(sPray);
-        enterToPray.hasExitTime = true; enterToPray.exitTime = 1f; enterToPray.duration = 0.1f;
-        var prayBack = sPray.AddTransition(loco);
-        prayBack.AddCondition(AnimatorConditionMode.IfNot, 0f, "Pray");
-        prayBack.hasExitTime = false; prayBack.duration = 0.5f;
-        var enterBack = sEnter.AddTransition(loco);
-        enterBack.AddCondition(AnimatorConditionMode.IfNot, 0f, "Pray");
-        enterBack.hasExitTime = false; enterBack.duration = 0.4f;
+        // Crawling.
+        T(loco, crawlState, 0.35f).AddCondition(AnimatorConditionMode.If, 0f, "Crawl");
+        T(crawlState, loco, 0.35f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Crawl");
 
-        var toWork = loco.AddTransition(sWork);
-        toWork.AddCondition(AnimatorConditionMode.If, 0f, "Work");
-        toWork.hasExitTime = false; toWork.duration = 0.25f;
-        var workBack = sWork.AddTransition(loco);
-        workBack.AddCondition(AnimatorConditionMode.IfNot, 0f, "Work");
-        workBack.hasExitTime = false; workBack.duration = 0.3f;
+        // Prayer and radio work.
+        T(loco, sEnter, 0.2f).AddCondition(AnimatorConditionMode.If, 0f, "Pray");
+        T(crawlState, sEnter, 0.3f).AddCondition(AnimatorConditionMode.If, 0f, "Pray");
+        T(sEnter, sPray, 0.1f, true, 1f);
+        T(sPray, loco, 0.5f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Pray");
+        T(sEnter, loco, 0.4f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Pray");
+        T(loco, sWork, 0.25f).AddCondition(AnimatorConditionMode.If, 0f, "Work");
+        T(sWork, loco, 0.3f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Work");
 
+        // ---- upper-body layer: the sword swing plays over any locomotion. SwordController drives its weight.
+        var mask = BuildUpperBodyMask();
+        var upperMachine = new AnimatorStateMachine { name = "UpperBody", hideFlags = HideFlags.HideInHierarchy };
+        AssetDatabase.AddObjectToAsset(upperMachine, ctrl);
+        ctrl.AddLayer(new AnimatorControllerLayer
+        {
+            name = "UpperBody",
+            defaultWeight = 0f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = mask,
+            stateMachine = upperMachine
+        });
+        var empty = upperMachine.AddState("Empty");
+        upperMachine.defaultState = empty;
+        var sAttack = upperMachine.AddState("Attack"); sAttack.motion = attack;
+        var toAttack = empty.AddTransition(sAttack);
+        toAttack.AddCondition(AnimatorConditionMode.If, 0f, "Attack");
+        toAttack.duration = 0.05f; toAttack.hasExitTime = false;
+        var attackDone = sAttack.AddTransition(empty);
+        attackDone.hasExitTime = true; attackDone.exitTime = 1f; attackDone.duration = 0.05f;
+
+        EditorUtility.SetDirty(ctrl);
         AssetDatabase.SaveAssets();
-        Debug.Log("EMBER: player animator built.");
+        Debug.Log("EMBER: player animator built (locomotion, jump, crawl, attack layer).");
         return ctrl;
+    }
+
+    static AvatarMask BuildUpperBodyMask()
+    {
+        string path = AnimDir + "/UpperBody.mask";
+        AssetDatabase.DeleteAsset(path);
+        var mask = new AvatarMask();
+        mask.transformCount = Bones.Length;
+        for (int i = 0; i < Bones.Length; i++)
+        {
+            mask.SetTransformPath(i, Bones[i]);
+            mask.SetTransformActive(i, Bones[i].StartsWith(SP));
+        }
+        AssetDatabase.CreateAsset(mask, path);
+        return mask;
     }
 }

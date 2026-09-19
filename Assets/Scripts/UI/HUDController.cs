@@ -82,6 +82,7 @@ public class HUDController : MonoBehaviour
         GameEvents.RadioPartCollected += OnPartCollected;
         GameEvents.PrayerStarted += OnPrayerStarted;
         if (fuel) fuel.OnWarning += OnFuelWarning;
+        if (player && player.TryGetComponent(out playerController)) playerController.StandBlocked += OnStandBlocked;
     }
 
     void OnDisable()
@@ -94,6 +95,17 @@ public class HUDController : MonoBehaviour
         GameEvents.RadioPartCollected -= OnPartCollected;
         GameEvents.PrayerStarted -= OnPrayerStarted;
         if (fuel) fuel.OnWarning -= OnFuelWarning;
+        if (playerController) playerController.StandBlocked -= OnStandBlocked;
+    }
+
+    PlayerController playerController;
+
+    // Tried to stand up under something low: say why nothing happened.
+    void OnStandBlocked()
+    {
+        if (messageTimer > 0.3f) return;
+        ShowMessage("", "No room to stand", 1.2f);
+        AudioManager.Play(Sfx.Denied, 0.4f);
     }
 
     Vector2 floaterBase;
@@ -123,7 +135,7 @@ public class HUDController : MonoBehaviour
     void OnFuelEmpty()
     {
         string sub = prayer && prayer.HasLocket && !prayer.Used
-            ? (InputReader.IsTouchDevice ? "Tap PRAY" : "Press P or Space to pray")
+            ? (InputReader.IsTouchDevice ? "Tap PRAY" : "Press P to pray")
             : "Find fuel — or run for the radio";
         ShowMessage("THE FLAME IS OUT", sub, 4.5f);
     }

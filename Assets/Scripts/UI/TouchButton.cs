@@ -4,7 +4,7 @@ using UnityEngine.EventSystems;
 // An on-screen button that fires the moment it's touched (not on release), for responsive mobile play.
 public class TouchButton : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
 {
-    public enum Action { Interact, Pray, Pause }
+    public enum Action { Interact, Pray, Pause, Jump, Crawl, ToggleCamera, Attack }
     public Action action;
     [Tooltip("Scaled down slightly while held.")]
     public RectTransform pressVisual;
@@ -17,6 +17,10 @@ public class TouchButton : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
             case Action.Interact: input.PressTouchInteract(); break;
             case Action.Pray: input.PressTouchPray(); break;
             case Action.Pause: input.PressTouchPause(); break;
+            case Action.Jump: input.PressTouchJump(); break;
+            case Action.Crawl: input.PressTouchCrawl(); break;
+            case Action.ToggleCamera: input.PressTouchToggleCamera(); break;
+            case Action.Attack: input.PressTouchAttack(); break;
         }
         if (pressVisual) pressVisual.localScale = Vector3.one * 0.92f;
         Haptics.Pulse(0.15f, 0.03f);

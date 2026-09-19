@@ -24,10 +24,12 @@ public class PlayerInteractor : MonoBehaviour
 
     readonly Collider[] hits = new Collider[8];
     float nextScan;
+    CharacterController body;
 
     void Awake()
     {
         Controller = GetComponent<PlayerController>();
+        body = GetComponent<CharacterController>();
         Animator = GetComponentInChildren<PlayerAnimator>();
     }
 
@@ -59,7 +61,9 @@ public class PlayerInteractor : MonoBehaviour
 
     IInteractable FindNearest()
     {
-        int count = Physics.OverlapSphereNonAlloc(transform.position + Vector3.up, radius, hits, interactableLayers, QueryTriggerInteraction.Collide);
+        // Search around the body's centre, which drops while crawling.
+        Vector3 centre = body ? transform.position + body.center : transform.position + Vector3.up;
+        int count = Physics.OverlapSphereNonAlloc(centre, radius, hits, interactableLayers, QueryTriggerInteraction.Collide);
         IInteractable best = null;
         float bestDist = float.MaxValue;
         for (int i = 0; i < count; i++)

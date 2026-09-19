@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 // The one place gameplay reads input from.
 // Keyboard, mouse and gamepad come from the Input System actions asset.
 // On-screen touch controls (joystick, look area, buttons) push their values in here,
-// so the player, camera and prayer code never care which device is being used.
+// so the player, camera, sword and prayer code never care which device is being used.
 [DefaultExecutionOrder(-100)]
 public class InputReader : MonoBehaviour
 {
@@ -39,13 +39,14 @@ public class InputReader : MonoBehaviour
 
     [Header("Touch")]
     [Tooltip("Touch joystick deflection above this makes the character run.")]
-    [Range(0.5f, 1f)] public float touchRunThreshold = 0.85f;
+    [Range(0.5f, 1f)] public float touchRunThreshold = 0.9f;
 
-    InputAction moveAction, interactAction, prayAction, pauseAction, sprintAction;
+    InputAction moveAction, interactAction, prayAction, pauseAction, sprintAction,
+                jumpAction, crawlAction, attackAction, toggleCameraAction;
 
     Vector2 touchMove;
     Vector2 touchLookPixels;
-    bool touchInteractQueued, touchPrayQueued, touchPauseQueued;
+    bool touchInteract, touchPray, touchPause, touchJump, touchCrawl, touchAttack, touchToggleCamera;
 
     public Vector2 Move { get; private set; }
     public Vector2 LookDegrees { get; private set; }
@@ -53,6 +54,10 @@ public class InputReader : MonoBehaviour
     public bool InteractPressed { get; private set; }
     public bool PrayPressed { get; private set; }
     public bool PausePressed { get; private set; }
+    public bool JumpPressed { get; private set; }
+    public bool CrawlPressed { get; private set; }
+    public bool AttackPressed { get; private set; }
+    public bool ToggleCameraPressed { get; private set; }
     public bool HasLookInput => LookDegrees.sqrMagnitude > 0.0001f;
 
     public bool GameplayLookEnabled { get; set; } = true;
@@ -69,6 +74,10 @@ public class InputReader : MonoBehaviour
         prayAction = map.FindAction("Pray", true);
         pauseAction = map.FindAction("Pause", true);
         sprintAction = map.FindAction("Sprint", true);
+        jumpAction = map.FindAction("Jump", true);
+        crawlAction = map.FindAction("Crawl", true);
+        attackAction = map.FindAction("Attack", true);
+        toggleCameraAction = map.FindAction("ToggleCamera", true);
     }
 
     void OnEnable() => actions?.FindActionMap("Player")?.Enable();
@@ -77,9 +86,13 @@ public class InputReader : MonoBehaviour
     // ----- called by the on-screen touch controls -----
     public void SetTouchMove(Vector2 value) => touchMove = Vector2.ClampMagnitude(value, 1f);
     public void AddTouchLook(Vector2 pixels) => touchLookPixels += pixels;
-    public void PressTouchInteract() => touchInteractQueued = true;
-    public void PressTouchPray() => touchPrayQueued = true;
-    public void PressTouchPause() => touchPauseQueued = true;
+    public void PressTouchInteract() => touchInteract = true;
+    public void PressTouchPray() => touchPray = true;
+    public void PressTouchPause() => touchPause = true;
+    public void PressTouchJump() => touchJump = true;
+    public void PressTouchCrawl() => touchCrawl = true;
+    public void PressTouchAttack() => touchAttack = true;
+    public void PressTouchToggleCamera() => touchToggleCamera = true;
 
     void Update()
     {
@@ -87,13 +100,25 @@ public class InputReader : MonoBehaviour
         Move = touchMove.sqrMagnitude > keyMove.sqrMagnitude ? touchMove : Vector2.ClampMagnitude(keyMove, 1f);
         Sprint = sprintAction.IsPressed() || touchMove.magnitude > touchRunThreshold;
 
-        InteractPressed = interactAction.WasPressedThisFrame() || touchInteractQueued;
-        PrayPressed = prayAction.WasPressedThisFrame() || touchPrayQueued;
-        PausePressed = pauseAction.WasPressedThisFrame() || touchPauseQueued;
-        touchInteractQueued = touchPrayQueued = touchPauseQueued = false;
+        InteractPressed = interactAction.WasPressedThisFrame() || touchInteract;
+        PrayPressed = prayAction.WasPressedThisFrame() || touchPray;
+        PausePressed = pauseAction.WasPressedThisFrame() || touchPause;
+        JumpPressed = jumpAction.WasPressedThisFrame() || touchJump;
+        CrawlPressed = crawlAction.WasPressedThisFrame() || touchCrawl;
+        ToggleCameraPressed = toggleCameraAction.WasPressedThisFrame() || touchToggleCamera;
+        AttackPressed = touchAttack || (attackAction.WasPressedThisFrame() && !ClickIsForCursor());
+        touchInteract = touchPray = touchPause = touchJump = touchCrawl = touchAttack = touchToggleCamera = false;
 
         LookDegrees = GameplayLookEnabled ? ReadLook() : Vector2.zero;
         touchLookPixels = Vector2.zero;
+    }
+
+    // A left click on an unlocked desktop cursor is used to lock the cursor (or press UI), not to swing the sword.
+    static bool ClickIsForCursor()
+    {
+        var mouse = Mouse.current;
+        if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return false;
+        return Cursor.lockState != CursorLockMode.Locked || PointerOverUI();
     }
 
     Vector2 ReadLook()
@@ -104,7 +129,7 @@ public class InputReader : MonoBehaviour
         if (mouse != null)
         {
             bool locked = Cursor.lockState == CursorLockMode.Locked;
-            bool dragging = (mouse.rightButton.isPressed || mouse.leftButton.isPressed) && !PointerOverUI();
+            bool dragging = mouse.rightButton.isPressed && !PointerOverUI();
             if (locked || dragging) look += mouse.delta.ReadValue() * mouseSensitivity;
         }
 

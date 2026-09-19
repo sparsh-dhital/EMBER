@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Cinemachine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -14,10 +15,11 @@ public static class EmberSceneBuilder
     [MenuItem("EMBER/Build/5. Assemble Ember_Main Scene")]
     public static void BuildScene()
     {
+        EnsureLayers();
         var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
 
         // Prototype pieces that the new systems replace (the original P1_MovementTest scene is untouched).
-        foreach (var n in new[] { "Plane", "Pickups", "HUD_Canvas", "GameSystems", "CM_Gameplay", "CM_Menu", "CM_Ending" })
+        foreach (var n in new[] { "Plane", "Pickups", "HUD_Canvas", "GameSystems", "CM_Gameplay", "CM_Menu", "CM_Ending", "CM_FirstPerson" })
         {
             var go = GameObject.Find(n);
             if (go) Object.DestroyImmediate(go);
@@ -49,6 +51,7 @@ public static class EmberSceneBuilder
         public PrayerSystem prayer;
         public LanternLight lantern;
         public EmberCharacterBuilder.PlayerParts parts;
+        public CapsuleCollider hitbox;
     }
 
     static PlayerRefs SetupPlayer(EmberLevelBuilder.Result level)
@@ -78,16 +81,15 @@ public static class EmberSceneBuilder
         cc.skinWidth = 0.04f;
         cc.minMoveDistance = 0f;
 
-        p.fuel = Get<LanternFuel>(go);
-        p.fuel.maxFuel = 100f;
-        p.fuel.drainPerSecond = 0.8f;
-        p.controller = Get<PlayerController>(go);
-        p.controller.groundLayers = ~((1 << LayerMask.NameToLayer("Player")) | (1 << LayerMask.NameToLayer("Enemy")) | (1 << LayerMask.NameToLayer("Interactable")));
-        p.health = Get<PlayerHealth>(go);
-        p.interactor = Get<PlayerInteractor>(go);
-        p.interactor.interactableLayers = 1 << LayerMask.NameToLayer("Interactable");
-        p.animator = Get<PlayerAnimator>(go);
-        p.prayer = Get<PrayerSystem>(go);
+        // Reused components are reset to their code defaults so tuning changes in the scripts actually apply.
+        p.fuel = Fresh<LanternFuel>(go);
+        p.controller = Fresh<PlayerController>(go);
+        p.controller.groundLayers = EmberLayers.World;
+        p.health = Fresh<PlayerHealth>(go);
+        p.interactor = Fresh<PlayerInteractor>(go);
+        p.interactor.interactableLayers = EmberLayers.Interactables;
+        p.animator = Fresh<PlayerAnimator>(go);
+        p.prayer = Fresh<PrayerSystem>(go);
 
         p.parts = EmberCharacterBuilder.BuildModel(go);
         p.lantern = p.parts.lanternRoot.gameObject.AddComponent<LanternLight>();
@@ -103,6 +105,17 @@ public static class EmberSceneBuilder
         p.animator.animator = p.parts.animator;
         p.animator.controller = p.controller;
         p.animator.leanRoot = p.parts.model;
+
+        var feet = Fresh<FootPlacement>(go);
+        feet.controller = p.controller;
+        feet.groundLayers = p.controller.groundLayers;
+        feet.hips = FindDeep(p.parts.model, "Hips");
+        feet.thighL = FindDeep(p.parts.model, "UpperLegL");
+        feet.shinL = FindDeep(p.parts.model, "LowerLegL");
+        feet.footL = FindDeep(p.parts.model, "FootL");
+        feet.thighR = FindDeep(p.parts.model, "UpperLegR");
+        feet.shinR = FindDeep(p.parts.model, "LowerLegR");
+        feet.footR = FindDeep(p.parts.model, "FootR");
 
         p.health.controller = p.controller;
         p.health.animator = p.animator;
@@ -140,8 +153,40 @@ public static class EmberSceneBuilder
                      new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.3f), new GradientAlphaKey(1f, 0.7f), new GradientAlphaKey(0f, 1f) });
         fc.color = grad;
 
-        EmberCharacterBuilder.SetLayerRecursive(go, LayerMask.NameToLayer("Player"));
+        EmberCharacterBuilder.SetLayerRecursive(go, LayerMask.NameToLayer(EmberLayers.Player));
+
+        // What enemy attacks test against: a trigger around the body on its own layer, so nothing else ever hits it.
+        var hitbox = go.transform.Find("Hitbox") ? go.transform.Find("Hitbox").gameObject : new GameObject("Hitbox");
+        hitbox.transform.SetParent(go.transform, false);
+        hitbox.layer = LayerMask.NameToLayer(EmberLayers.PlayerHitbox);
+        var hc = Get<CapsuleCollider>(hitbox);
+        hc.isTrigger = true;
+        hc.radius = 0.34f;
+        hc.height = 1.8f;
+        hc.center = new Vector3(0f, 0.92f, 0f);
+        p.hitbox = hc;
         return p;
+    }
+
+    public static Transform FindDeep(Transform root, string name)
+    {
+        if (root.name == name) return root;
+        foreach (Transform c in root)
+        {
+            var t = FindDeep(c, name);
+            if (t) return t;
+        }
+        return null;
+    }
+
+    static T Fresh<T>(GameObject go) where T : Component
+    {
+        var c = Get<T>(go);
+        var temp = new GameObject("_defaults") { hideFlags = HideFlags.HideAndDontSave };
+        var defaults = temp.AddComponent(typeof(T));
+        EditorUtility.CopySerialized(defaults, c);
+        Object.DestroyImmediate(temp);
+        return c;
     }
 
     static T Get<T>(GameObject go) where T : Component
@@ -239,8 +284,9 @@ public static class EmberSceneBuilder
     class CameraRefs
     {
         public Camera main;
-        public CinemachineCamera gameplay, menu, ending;
+        public CinemachineCamera gameplay, menu, ending, firstPerson;
         public CameraController controller;
+        public CameraModeController mode;
     }
 
     static CameraRefs SetupCameras(PlayerRefs p, EmberLevelBuilder.Result level)
@@ -289,7 +335,7 @@ public static class EmberSceneBuilder
         composer.Composition = comp;
 
         var deocc = gp.AddComponent<CinemachineDeoccluder>();
-        deocc.CollideAgainst = 1 << 0;
+        deocc.CollideAgainst = EmberLayers.World;
         deocc.IgnoreTag = "Player";
         deocc.MinimumDistanceFromTarget = 0.6f;
         var avoid = deocc.AvoidObstacles;
@@ -312,6 +358,7 @@ public static class EmberSceneBuilder
         c.controller.noise = noise;
         c.controller.player = p.controller;
         c.controller.fuel = p.fuel;
+        c.controller.followTarget = p.parts.cameraTarget;
 
         // Title screen: slow orbit around the radio centre.
         var mg = new GameObject("CM_Menu");
@@ -328,7 +375,66 @@ public static class EmberSceneBuilder
         c.ending = eg.AddComponent<CinemachineCamera>();
         var el = c.ending.Lens; el.FieldOfView = 45f; el.FarClipPlane = 120f; c.ending.Lens = el;
         c.ending.Priority.Enabled = true; c.ending.Priority.Value = 0;
+
+        // First person: the camera sits at the eyes and is posed every frame by CameraModeController.
+        var fg = new GameObject("CM_FirstPerson");
+        c.firstPerson = fg.AddComponent<CinemachineCamera>();
+        var fl = c.firstPerson.Lens; fl.FieldOfView = 62f; fl.NearClipPlane = 0.05f; fl.FarClipPlane = 90f; c.firstPerson.Lens = fl;
+        c.firstPerson.Priority.Enabled = true; c.firstPerson.Priority.Value = 0;
+        var fpNoise = fg.AddComponent<CinemachineBasicMultiChannelPerlin>();
+        fpNoise.NoiseProfile = noise.NoiseProfile;
+        fpNoise.AmplitudeGain = 0.12f;
+        fpNoise.FrequencyGain = 0.6f;
+
+        c.mode = fg.AddComponent<CameraModeController>();
+        c.mode.thirdPerson = c.gameplay;
+        c.mode.firstPerson = c.firstPerson;
+        c.mode.thirdPersonController = c.controller;
+        c.mode.player = p.controller;
+        c.mode.upperArmR = FindDeep(p.parts.model, "UpperArmR");
+        c.mode.forearmR = FindDeep(p.parts.model, "ForearmR");
+        c.mode.handR = FindDeep(p.parts.model, "HandR");
+        c.mode.lantern = p.parts.lanternRoot;
+        c.mode.eyeBlockers = EmberLayers.World;
+        var hidden = new List<Renderer>();
+        var head = FindDeep(p.parts.model, "Neck");
+        if (head) hidden.AddRange(head.GetComponentsInChildren<Renderer>(true));
+        var scarf = FindDeep(p.parts.model, "Scarf");
+        if (scarf) hidden.AddRange(scarf.GetComponentsInChildren<Renderer>(true));
+        c.mode.hideInFirstPerson = hidden.ToArray();
+
+        brain.CustomBlends = BuildBlends();
         return c;
+    }
+
+    // Menu -> gameplay is a slow cinematic move, the view toggle is quick, and the ending shot drifts in.
+    static CinemachineBlenderSettings BuildBlends()
+    {
+        const string path = "Assets/Settings/Ember_CameraBlends.asset";
+        var asset = AssetDatabase.LoadAssetAtPath<CinemachineBlenderSettings>(path);
+        if (!asset)
+        {
+            asset = ScriptableObject.CreateInstance<CinemachineBlenderSettings>();
+            AssetDatabase.CreateAsset(asset, path);
+        }
+        CinemachineBlenderSettings.CustomBlend B(string from, string to, float seconds) => new CinemachineBlenderSettings.CustomBlend
+        {
+            From = from, To = to,
+            Blend = new CinemachineBlendDefinition(CinemachineBlendDefinition.Styles.EaseInOut, seconds),
+        };
+        asset.CustomBlends = new[]
+        {
+            B("CM_Menu", "CM_Gameplay", 1.8f),
+            B("CM_Menu", "CM_FirstPerson", 1.8f),
+            B("CM_Gameplay", "CM_Menu", 1.2f),
+            B("CM_FirstPerson", "CM_Menu", 1.2f),
+            B("CM_Gameplay", "CM_FirstPerson", 0.45f),
+            B("CM_FirstPerson", "CM_Gameplay", 0.45f),
+            B("**ANY CAMERA**", "CM_Ending", 2.5f),
+        };
+        EditorUtility.SetDirty(asset);
+        AssetDatabase.SaveAssets();
+        return asset;
     }
 
     // ------------------------------------------------------------------ wiring
@@ -379,6 +485,7 @@ public static class EmberSceneBuilder
 
         ui.touch.interactor = p.interactor;
         ui.touch.prayer = p.prayer;
+        ui.touch.controller = p.controller;
 
         foreach (var comp in new Object[] { s.game, s.audio, s.spawner, s.postFx, rc, level.locket, hud, ui.touch, ui.menu, c.controller, p.lantern, p.prayer, p.health, p.animator })
             EditorUtility.SetDirty(comp);
@@ -405,15 +512,46 @@ public static class EmberSceneBuilder
             EditorUtility.SetDirty(rp);
         }
 
-        // Only the player's own collisions matter; vampires and pickups never push each other around.
-        int player = LayerMask.NameToLayer("Player"), enemy = LayerMask.NameToLayer("Enemy"), inter = LayerMask.NameToLayer("Interactable");
-        Physics.IgnoreLayerCollision(enemy, enemy, true);
-        Physics.IgnoreLayerCollision(enemy, inter, true);
-        Physics.IgnoreLayerCollision(inter, inter, true);
-        Physics.IgnoreLayerCollision(player, enemy, true);
-        Physics.IgnoreLayerCollision(player, inter, false);
+        ConfigureCollisionMatrix();
 
         PlayerSettings.productName = "EMBER";
         AssetDatabase.SaveAssets();
+    }
+
+    // ------------------------------------------------------------------ layers
+
+    public static void EnsureLayers()
+    {
+        var tagManager = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+        var layers = tagManager.FindProperty("layers");
+        foreach (var (index, name) in EmberLayers.Slots)
+        {
+            var slot = layers.GetArrayElementAtIndex(index);
+            if (slot.stringValue != name) slot.stringValue = name;
+        }
+        tagManager.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    // Only pairs that need physical contact collide. Hitboxes are found by explicit queries, never by the physics step.
+    static void ConfigureCollisionMatrix()
+    {
+        int L(string n) => LayerMask.NameToLayer(n);
+        int player = L(EmberLayers.Player), enemy = L(EmberLayers.Enemy), inter = L(EmberLayers.Interactable),
+            enemyHit = L(EmberLayers.EnemyHitbox), playerHit = L(EmberLayers.PlayerHitbox), env = L(EmberLayers.Environment), prop = L(EmberLayers.DynamicProp);
+        for (int i = 0; i < 32; i++)
+        {
+            Physics.IgnoreLayerCollision(enemyHit, i, true);
+            Physics.IgnoreLayerCollision(playerHit, i, true);
+            // Loose debris (sword fragments) only rests on the world.
+            Physics.IgnoreLayerCollision(prop, i, !(i == 0 || i == env || i == prop));
+        }
+        Physics.IgnoreLayerCollision(enemy, enemy, true);    // vampires separate with NavMesh avoidance, not physics
+        Physics.IgnoreLayerCollision(enemy, inter, true);
+        Physics.IgnoreLayerCollision(inter, inter, true);
+        Physics.IgnoreLayerCollision(inter, env, true);
+        Physics.IgnoreLayerCollision(player, enemy, false);  // bodies block each other: no walking through a vampire
+        Physics.IgnoreLayerCollision(player, inter, false);  // pickup triggers
+        Physics.IgnoreLayerCollision(player, env, false);
+        Physics.IgnoreLayerCollision(enemy, env, false);
     }
 }

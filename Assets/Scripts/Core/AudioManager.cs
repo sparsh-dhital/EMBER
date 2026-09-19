@@ -9,7 +9,11 @@ public enum Sfx
     PlayerHurt, PlayerDeath,
     PrayerStart, PrayerTick, PrayerEnd,
     RadioBeep, RadioSignal, RadioVoice, Flare,
-    Victory, Defeat, UiClick, Heartbeat
+    Victory, Defeat, UiClick, Heartbeat,
+    // Added in the refinement pass. Always append: the values are saved in the scene.
+    FootstepDirt, FootstepLeaves, FootstepWood, FootstepStone, CrawlRustle, Jump, Land,
+    SwordPickup, SwordSwing, SwordHit, SwordBreak, VampireStagger, VampireDeath, LethalStrike,
+    AmbientDistant, UiHover
 }
 
 [Serializable]

@@ -16,10 +16,10 @@ TagManager:
   - Player
   - Enemy
   - Interactable
-  - 
-  - 
-  - 
-  - 
+  - EnemyHitbox
+  - PlayerHitbox
+  - Environment
+  - DynamicProp
   - 
   - 
   - 

@@ -14,6 +14,7 @@ public static class EmberPrefabBuilder
     [MenuItem("EMBER/Build/3. Prefabs (vampire, pickups)")]
     public static void BuildAll()
     {
+        EmberSceneBuilder.EnsureLayers();
         EmberArt.EnsureFolders();
         BuildVampire();
         BuildFuelCan();
@@ -105,7 +106,27 @@ public static class EmberPrefabBuilder
         anim.capeL = cape[0]; anim.capeR = cape[1];
         anim.eyes = new[] { eyeL.GetComponent<Renderer>(), eyeR.GetComponent<Renderer>() };
 
-        SetLayerRecursive(root, LayerMask.NameToLayer("Enemy"));
+        // A solid body the player can't walk through (kinematic: the NavMeshAgent moves it, physics never pushes it).
+        var body = root.AddComponent<CapsuleCollider>();
+        body.radius = 0.3f;
+        body.height = 1.9f;
+        body.center = new Vector3(0f, 0.95f, 0f);
+        var rb = root.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
+        rb.interpolation = RigidbodyInterpolation.None;
+
+        SetLayerRecursive(root, LayerMask.NameToLayer(EmberLayers.Enemy));
+
+        // What the sword tests against: slightly larger than the body so a swing that visibly connects counts.
+        var hitbox = new GameObject("Hitbox");
+        hitbox.transform.SetParent(root.transform, false);
+        hitbox.layer = LayerMask.NameToLayer(EmberLayers.EnemyHitbox);
+        var hc = hitbox.AddComponent<CapsuleCollider>();
+        hc.isTrigger = true;
+        hc.radius = 0.42f;
+        hc.height = 2f;
+        hc.center = new Vector3(0f, 1.05f, 0f);
         Save(root, VampirePath);
     }
 

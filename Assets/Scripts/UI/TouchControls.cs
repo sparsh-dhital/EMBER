@@ -14,6 +14,10 @@ public class TouchControls : MonoBehaviour
     public TMP_Text interactLabel;
     public CanvasGroup prayButton;
     public RectTransform prayGlow;
+    public CanvasGroup attackButton;
+    public TMP_Text attackLabel;
+    public TMP_Text crawlLabel;
+    public PlayerController controller;
 
     [Tooltip("Show the touch controls in the Editor and on desktop, for testing.")]
     public bool forceShow;
@@ -32,6 +36,11 @@ public class TouchControls : MonoBehaviour
             var it = interactor.Current;
             interactLabel.text = it is RadioCentre ? "USE" : "TAKE";
         }
+
+        if (crawlLabel && controller) crawlLabel.text = controller.IsCrawling ? "STAND" : "CRAWL";
+        // The sword button only exists while a sword is carried.
+        bool armed = SwordController.Armed;
+        SetGroup(attackButton, armed ? 1f : 0f, armed);
 
         bool hasPrayer = prayer && prayer.HasLocket && !prayer.Used;
         bool ready = prayer && prayer.CanPray;

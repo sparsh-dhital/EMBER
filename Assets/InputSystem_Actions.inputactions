@@ -47,7 +47,7 @@
                     "priority": 0
                 },
                 {
-                    "name": "Crouch",
+                    "name": "Crawl",
                     "type": "Button",
                     "id": "27c5f898-bc57-4ee1-8800-db469aca5fe3",
                     "expectedControlType": "Button",
@@ -110,6 +110,16 @@
                     "name": "Pause",
                     "type": "Button",
                     "id": "b4e2d3c5-6c7f-4081-9ba2-c3d4e5f60712",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false,
+                    "priority": 0
+                },
+                {
+                    "name": "ToggleCamera",
+                    "type": "Button",
+                    "id": "453f0b86-42c5-4cf0-82ba-6a555b34405f",
                     "expectedControlType": "Button",
                     "processors": "",
                     "interactions": "",
@@ -307,17 +317,6 @@
                 },
                 {
                     "name": "",
-                    "id": "886e731e-7071-4ae4-95c0-e61739dad6fd",
-                    "path": "<Touchscreen>/primaryTouch/tap",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";Touch",
-                    "action": "Attack",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
                     "id": "ee3d0cd2-254e-47a7-a8cb-bc94d9658c54",
                     "path": "<Joystick>/trigger",
                     "interactions": "",
@@ -488,7 +487,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "Gamepad",
-                    "action": "Crouch",
+                    "action": "Crawl",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
@@ -499,7 +498,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "Keyboard&Mouse",
-                    "action": "Crouch",
+                    "action": "Crawl",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
@@ -510,28 +509,6 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "Keyboard&Mouse",
-                    "action": "Pray",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "d6a4f5e7-8e91-42a3-bdc4-e5f607182934",
-                    "path": "<Keyboard>/space",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "Keyboard&Mouse",
-                    "action": "Pray",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "e7b5a6f8-9fa2-43b4-8ed5-f6071829304a",
-                    "path": "<Gamepad>/buttonSouth",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "Gamepad",
                     "action": "Pray",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -555,6 +532,61 @@
                     "processors": "",
                     "groups": "Gamepad",
                     "action": "Pause",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "b1ea664b-69a1-4083-be0b-fc78e6fce9de",
+                    "path": "<Gamepad>/rightShoulder",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Gamepad",
+                    "action": "Pray",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "320a0464-9219-404d-9cff-6526e356d03c",
+                    "path": "<Keyboard>/f",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Attack",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "049b8469-7b59-4071-8492-e545d9637ec0",
+                    "path": "<Keyboard>/leftCtrl",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Crawl",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "6ac02595-6029-4a1a-846b-8d9f523e0398",
+                    "path": "<Keyboard>/v",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "ToggleCamera",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "c5978e5d-dbb7-444a-acee-7a0a4ced358e",
+                    "path": "<Gamepad>/select",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Gamepad",
+                    "action": "ToggleCamera",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

@@ -70,8 +70,8 @@ public class MenuController : MonoBehaviour
         if (controlsText)
         {
             controlsText.text = InputReader.IsTouchDevice
-                ? "Left thumb: move  ·  Right side: look  ·  Push the stick fully to run\nTAKE / USE appear near objects  ·  PRAY appears once you hold the locket"
-                : "WASD / Arrows: move  ·  Mouse: look  ·  Shift: run\nE: interact  ·  P or Space: pray  ·  Esc: pause";
+                ? "Left thumb: move  ·  Right side: look  ·  Push the stick fully to run\nJUMP  ·  CRAWL  ·  VIEW switches first / third person  ·  SWORD once you carry one\nTAKE / USE appear near objects  ·  PRAY appears once you hold the locket"
+                : "WASD: move  ·  Mouse: look  ·  Shift: run  ·  Space: jump  ·  C: crawl  ·  V: first / third person\nE: interact  ·  Left click / F: sword  ·  P: pray  ·  Esc: pause";
         }
     }
 

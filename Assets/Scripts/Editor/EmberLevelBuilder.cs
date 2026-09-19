@@ -28,6 +28,7 @@ public static class EmberLevelBuilder
     static readonly Vector2 Clearing = new Vector2(23f, -2f);
     static readonly Vector2 Supplies = new Vector2(-23f, 1f);
     static readonly Vector2 Chapel = new Vector2(1f, 25f);
+    static readonly Vector2 Windfall = new Vector2(-21.5f, -8f);
 
     static readonly Pad[] Pads =
     {
@@ -72,11 +73,13 @@ public static class EmberLevelBuilder
         BuildClearing(landmarks);
         BuildSupplies(landmarks);
         r.locket = BuildChapel(landmarks);
+        BuildWindfall(landmarks);
 
         BuildForest(root);
         BuildRocks(root);
         BuildFuel(root);
         BuildBounds(root);
+        AssignEnvironmentLayer(root);
         r.playerStart = Group("PlayerStart", root, new Vector3(0f, GroundY(0f, 6.5f), 6.5f), 20f);
 
         r.moon = BuildLighting(root);
@@ -657,13 +660,45 @@ public static class EmberLevelBuilder
         return locketGo.GetComponent<LocketPickup>();
     }
 
+    // A pine the wind threw down across a gap between two boulders: a crawl-through shortcut from the supply
+    // cache to the cave. The trunk sits too low to walk under and too high to jump, so only crawling gets through;
+    // vampires (and anyone who won't crawl) go the long way round the boulders.
+    static void BuildWindfall(Transform parent)
+    {
+        var g = Landmark("Windfall", parent, Windfall, 8f);
+        const float clearance = 1.12f, radius = 0.34f;
+        // Rock meshes are ~1.6 m across per unit of scale: these leave a ~1.8 m gap under the trunk.
+        Rock("BoulderL", g, new Vector3(-2.45f, 0.5f, 0f), new Vector3(1.5f, 2f, 2.2f), 20f, 1);
+        Rock("BoulderR", g, new Vector3(2.5f, 0.45f, 0.1f), new Vector3(1.45f, 1.9f, 2.3f), 160f, 2);
+        Rock("RidgeL", g, new Vector3(-4.8f, 0.4f, 0.6f), new Vector3(2f, 1.6f, 2f), 80f, 0);
+        Rock("RidgeR", g, new Vector3(4.9f, 0.35f, -0.4f), new Vector3(1.9f, 1.5f, 2.1f), 230f, 1);
+
+        float y = clearance + radius;
+        Cyl("Trunk", g, new Vector3(0.3f, y, 0f), radius, 8.4f, "Bark", new Vector3(0f, 0f, 88f));
+        // Root plate torn out of the ground at one end, broken crown at the other.
+        Cyl("RootPlate", g, new Vector3(-4.6f, y + 0.1f, 0f), 1.15f, 0.35f, "Bark", new Vector3(0f, 0f, 88f), false);
+        Box("RootSoil", g, new Vector3(-4.75f, y - 0.2f, 0f), new Vector3(0.3f, 1.4f, 1.6f), "Rock", new Vector3(0f, 0f, 4f), false);
+        for (int i = 0; i < 5; i++)
+        {
+            float a = i * 72f + 20f;
+            Cyl("Root" + i, g, new Vector3(-4.5f, y + Mathf.Sin(a * Mathf.Deg2Rad) * 0.9f, Mathf.Cos(a * Mathf.Deg2Rad) * 0.9f), 0.05f, 0.7f, "Bark", new Vector3(a, 90f, 0f), false);
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            float x = 1.3f + i * 0.8f;
+            Cyl("Branch" + i, g, new Vector3(x, y + 0.35f, (i % 2 == 0 ? 0.25f : -0.25f)), 0.035f, 0.9f, "Bark", new Vector3(i % 2 == 0 ? 35f : -35f, 0f, 20f), false);
+        }
+        // Someone crawled through here before you: a torn strip of cloth snagged on the bark.
+        Box("TornCloth", g, new Vector3(-0.4f, y - radius - 0.1f, 0.2f), new Vector3(0.12f, 0.28f, 0.01f), "Scarf", new Vector3(8f, 30f, 4f), false);
+    }
+
     // ------------------------------------------------------------------ nature
 
     static bool IsClearArea(Vector2 p, float extra)
     {
         if (p.magnitude < 12f + extra) return false;
-        float[] radii = { 6.5f, 6f, 7f, 7f, 6.5f, 6.5f, 8.5f };
-        Vector2[] spots = { Cabin, Truck, WatchPost + new Vector2(-3f, 3f), Cave, Clearing, Supplies, Chapel };
+        float[] radii = { 6.5f, 6f, 7f, 7f, 6.5f, 6.5f, 8.5f, 5f };
+        Vector2[] spots = { Cabin, Truck, WatchPost + new Vector2(-3f, 3f), Cave, Clearing, Supplies, Chapel, Windfall };
         for (int i = 0; i < spots.Length; i++) if (Vector2.Distance(p, spots[i]) < radii[i] + extra) return false;
         if (PathDistance(p) < 2.4f + extra) return false;
         return true;
@@ -905,7 +940,7 @@ public static class EmberLevelBuilder
         var surface = root.gameObject.AddComponent<NavMeshSurface>();
         surface.collectObjects = CollectObjects.Children;
         surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
-        surface.layerMask = ~((1 << LayerMask.NameToLayer("Player")) | (1 << LayerMask.NameToLayer("Enemy")) | (1 << LayerMask.NameToLayer("Interactable")));
+        surface.layerMask = EmberLayers.World;
         surface.BuildNavMesh();
 
         string path = "Assets/Scenes/Ember_Main_NavMesh.asset";
@@ -933,5 +968,13 @@ public static class EmberLevelBuilder
             list.Add(Group("SpawnPoint" + list.Count, group, hit.position, 0f));
         }
         return list.ToArray();
+    }
+
+    // Everything solid that the level builder made goes on the Environment layer (pickups and triggers keep theirs).
+    static void AssignEnvironmentLayer(Transform root)
+    {
+        int env = LayerMask.NameToLayer(EmberLayers.Environment);
+        foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            if (t.gameObject.layer == 0) t.gameObject.layer = env;
     }
 }
