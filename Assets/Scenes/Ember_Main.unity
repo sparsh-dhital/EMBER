@@ -46484,7 +46484,7 @@ AudioSource:
   serializedVersion: 4
   OutputAudioMixerGroup: {fileID: 0}
   m_audioClip: {fileID: 0}
-  m_Resource: {fileID: 8300000, guid: d343920a26989874396e2390d097cfbd, type: 3}
+  m_Resource: {fileID: 8300000, guid: 1b1e536a16f7ea84ebb06b67faeef0a3, type: 3}
   m_PlayOnAwake: 0
   m_Volume: 0
   m_Pitch: 1
@@ -71690,7 +71690,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1314895426}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.11718198, y: 0.21797432, z: -0.026372472, w: 0.96853507}
+  m_LocalRotation: {x: 0.11635191, y: 0.246486, z: -0.029822065, w: 0.9616744}
   m_LocalPosition: {x: -1.7007927, y: 3.101325, z: 1.8271112}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -71707,6 +71707,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1315633969}
   - component: {fileID: 1315633970}
+  - component: {fileID: 1315633971}
   m_Layer: 8
   m_Name: HolyLight
   m_TagString: Untagged
@@ -71794,6 +71795,35 @@ Light:
   m_LightUnit: 1
   m_LuxAtDistance: 1
   m_EnableSpotReflector: 1
+--- !u!114 &1315633971
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1315633968}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalLightData
+  m_UsePipelineSettings: 1
+  m_AdditionalLightsShadowResolutionTier: 2
+  m_CustomShadowLayers: 0
+  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 0
+  m_RenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_ShadowRenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_Version: 4
+  m_LightLayerMask: 1
+  m_ShadowLayerMask: 1
+  m_RenderingLayers: 1
+  m_ShadowRenderingLayers: 1
 --- !u!1 &1316707992
 GameObject:
   m_ObjectHideFlags: 0
@@ -86075,6 +86105,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1545879000}
   - component: {fileID: 1545879001}
+  - component: {fileID: 1545879002}
   m_Layer: 13
   m_Name: FlareLight
   m_TagString: Untagged
@@ -86163,6 +86194,35 @@ Light:
   m_LightUnit: 1
   m_LuxAtDistance: 1
   m_EnableSpotReflector: 1
+--- !u!114 &1545879002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1545878999}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalLightData
+  m_UsePipelineSettings: 1
+  m_AdditionalLightsShadowResolutionTier: 2
+  m_CustomShadowLayers: 0
+  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 0
+  m_RenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_ShadowRenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_Version: 4
+  m_LightLayerMask: 1
+  m_ShadowLayerMask: 1
+  m_RenderingLayers: 1
+  m_ShadowRenderingLayers: 1
 --- !u!1 &1547460309
 GameObject:
   m_ObjectHideFlags: 0
@@ -94140,20 +94200,17 @@ MonoBehaviour:
     pitchVariance: 0
   - id: 9
     clips:
-    - {fileID: 8300000, guid: 57e937a8d41c82f4e96f8250901c694e, type: 3}
-    - {fileID: 8300000, guid: d340643c48e3bcd4e9479d3407cf0422, type: 3}
-    - {fileID: 8300000, guid: 67ede587a585f434a9a9c75f96d6286e, type: 3}
+    - {fileID: 8300000, guid: 19b27c49b6d309342b64d3deb61cff41, type: 3}
     volume: 0.9
     pitchVariance: 0.12
   - id: 10
     clips:
-    - {fileID: 8300000, guid: 67fc1e108d58fbc4d9520e99d48a05fc, type: 3}
-    - {fileID: 8300000, guid: c3c21b0866be8cb4b93d4519110ac03f, type: 3}
+    - {fileID: 8300000, guid: e555b86cf73cd274295293da08b00a1d, type: 3}
     volume: 0.8
     pitchVariance: 0.1
   - id: 11
     clips:
-    - {fileID: 8300000, guid: 5e43a39bdce65df4aaf6602006272792, type: 3}
+    - {fileID: 8300000, guid: a0098496344cefd439f3eaab4e2b4974, type: 3}
     volume: 0.9
     pitchVariance: 0.08
   - id: 12
@@ -94203,12 +94260,12 @@ MonoBehaviour:
     pitchVariance: 0
   - id: 21
     clips:
-    - {fileID: 8300000, guid: d5bbff139dcc51343b58c702adf75bf0, type: 3}
+    - {fileID: 8300000, guid: 60231573d7b996a48a971ebdc7afc2f4, type: 3}
     volume: 0.85
     pitchVariance: 0
   - id: 22
     clips:
-    - {fileID: 8300000, guid: 50977d5d2487c8948a477bdaa887807d, type: 3}
+    - {fileID: 8300000, guid: ae617855e944c65418065d0ef2e1ea66, type: 3}
     volume: 0.85
     pitchVariance: 0
   - id: 23
@@ -94221,14 +94278,24 @@ MonoBehaviour:
     - {fileID: 8300000, guid: aff3831bc95c8634581a52cbb9d826a7, type: 3}
     volume: 0.9
     pitchVariance: 0
+  - id: 41
+    clips:
+    - {fileID: 8300000, guid: 6675f2fcf0795964e9f868adc5964db0, type: 3}
+    volume: 1
+    pitchVariance: 0.05
   windLoop: {fileID: 8300000, guid: 0ea467d9580bea14e97b6004f1fab3d2, type: 3}
   insectsLoop: {fileID: 8300000, guid: b48ee4363aff4fa4c82460af1a09b5c3, type: 3}
   tensionDroneLoop: {fileID: 8300000, guid: b98292ffdf1f618439cfafff63e3e8c8, type: 3}
   prayerChoirLoop: {fileID: 8300000, guid: 623f554eed65a164eb1f2966d2c819ec, type: 3}
-  lanternCrackleLoop: {fileID: 8300000, guid: ac0dea6746350f64eab270c9b65403fa, type: 3}
+  lanternCrackleLoop: {fileID: 8300000, guid: 9f0a0a4b2f1e6e447a3027498de6b319, type: 3}
+  menuMusicClip: {fileID: 8300000, guid: 2560ad592b959dc479ecb944c121a796, type: 3}
+  menuMusicVolume: 0.28
   fuel: {fileID: 8559177685508064096}
   health: {fileID: 8559177685508064099}
   vampires: {fileID: 1969102559}
+  masterGroup: {fileID: 0}
+  sfxGroup: {fileID: 0}
+  ambienceGroup: {fileID: 0}
   masterVolume: 1
   windVolume: 0.35
   insectsVolume: 0.3

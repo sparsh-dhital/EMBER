@@ -13,7 +13,7 @@ public enum Sfx
     // Added in the refinement pass. Always append: the values are saved in the scene.
     FootstepDirt, FootstepLeaves, FootstepWood, FootstepStone, CrawlRustle, Jump, Land,
     SwordPickup, SwordSwing, SwordHit, SwordBreak, VampireStagger, VampireDeath, LethalStrike,
-    AmbientDistant, UiHover
+    AmbientDistant, UiHover, Opening
 }
 
 [Serializable]
@@ -41,10 +41,20 @@ public class AudioManager : MonoBehaviour
     public AudioClip prayerChoirLoop;
     public AudioClip lanternCrackleLoop;
 
+    [Header("Menu Music")]
+    [Tooltip("Looping horror music played only on the main menu/dashboard.")]
+    public AudioClip menuMusicClip;
+    [Range(0f, 1f)] public float menuMusicVolume = 0.28f;
+
     [Header("References")]
     public LanternFuel fuel;
     public PlayerHealth health;
     public VampireSpawner vampires;
+
+    [Header("Mixer Groups")]
+    public UnityEngine.Audio.AudioMixerGroup masterGroup;
+    public UnityEngine.Audio.AudioMixerGroup sfxGroup;
+    public UnityEngine.Audio.AudioMixerGroup ambienceGroup;
 
     [Header("Mix")]
     [Range(0f, 1f)] public float masterVolume = 1f;
@@ -70,20 +80,22 @@ public class AudioManager : MonoBehaviour
     AudioSource[] pool;
     int poolIndex;
     AudioSource wind, insects, drone, choir, crackle;
+    AudioSource menuMusic;
+    float menuMusicFadeTarget;
     float nextBeat;
     bool praying, ending;
 
     void Awake()
     {
         instance = this;
-        uiSource = MakeSource("UI", false);
+        uiSource = MakeSource("UI", false, sfxGroup);
         uiSource.ignoreListenerPause = true;
-        oneShot2D = MakeSource("OneShots", false);
+        oneShot2D = MakeSource("OneShots", false, sfxGroup);
 
         pool = new AudioSource[pooledSources];
         for (int i = 0; i < pool.Length; i++)
         {
-            pool[i] = MakeSource("3D_" + i, false);
+            pool[i] = MakeSource("3D_" + i, false, sfxGroup);
             pool[i].spatialBlend = 1f;
             pool[i].rolloffMode = AudioRolloffMode.Linear;
             pool[i].minDistance = 2f;
@@ -91,11 +103,15 @@ public class AudioManager : MonoBehaviour
             pool[i].dopplerLevel = 0f;
         }
 
-        wind = MakeLoop("Wind", windLoop);
-        insects = MakeLoop("Insects", insectsLoop);
-        drone = MakeLoop("Drone", tensionDroneLoop);
-        choir = MakeLoop("Choir", prayerChoirLoop);
-        crackle = MakeLoop("Crackle", lanternCrackleLoop);
+        wind = MakeLoop("Wind", windLoop, ambienceGroup);
+        insects = MakeLoop("Insects", insectsLoop, ambienceGroup);
+        drone = MakeLoop("Drone", tensionDroneLoop, ambienceGroup);
+        choir = MakeLoop("Choir", prayerChoirLoop, ambienceGroup);
+        crackle = MakeLoop("Crackle", lanternCrackleLoop, ambienceGroup);
+
+        // Menu music: starts silent; OnStateChanged will bring it up when the menu is shown.
+        menuMusic = MakeLoop("MenuMusic", menuMusicClip, ambienceGroup);
+        menuMusicFadeTarget = 0f;
     }
 
     void OnEnable()
@@ -124,7 +140,7 @@ public class AudioManager : MonoBehaviour
         if (fuel) fuel.OnWarning -= OnFuelWarning;
     }
 
-    AudioSource MakeSource(string name, bool loop)
+    AudioSource MakeSource(string name, bool loop, UnityEngine.Audio.AudioMixerGroup group = null)
     {
         var go = new GameObject(name);
         go.transform.SetParent(transform, false);
@@ -132,16 +148,40 @@ public class AudioManager : MonoBehaviour
         src.playOnAwake = false;
         src.loop = loop;
         src.spatialBlend = 0f;
+        if (group != null) src.outputAudioMixerGroup = group;
+        else if (masterGroup != null) src.outputAudioMixerGroup = masterGroup;
         return src;
     }
 
-    AudioSource MakeLoop(string name, AudioClip clip)
+    AudioSource MakeLoop(string name, AudioClip clip, UnityEngine.Audio.AudioMixerGroup group = null)
     {
-        var src = MakeSource(name, true);
+        var src = MakeSource(name, true, group);
         src.clip = clip;
         src.volume = 0f;
         if (clip) src.Play();
         return src;
+    }
+
+    // ---------------------------------------------------------------- menu music API
+
+    /// <summary>Smoothly fades out the menu music over <paramref name="duration"/> seconds.</summary>
+    public static void FadeMenuMusic(float duration = 1.5f)
+    {
+        if (instance) instance.StartCoroutine(instance.FadeMenuMusicRoutine(duration));
+    }
+
+    System.Collections.IEnumerator FadeMenuMusicRoutine(float duration)
+    {
+        if (!menuMusic) yield break;
+        float start = menuMusic.volume;
+        menuMusicFadeTarget = 0f;
+        for (float t = 0f; t < duration; t += Time.unscaledDeltaTime)
+        {
+            menuMusic.volume = Mathf.Lerp(start, 0f, t / duration);
+            yield return null;
+        }
+        menuMusic.volume = 0f;
+        menuMusic.Stop();
     }
 
     // ---------------------------------------------------------------- public API
@@ -198,9 +238,26 @@ public class AudioManager : MonoBehaviour
     void OnStateChanged(GameState s)
     {
         if (s == GameState.Defeat) { ending = true; Play(Sfx.Defeat); }
+
+        // Start menu music when the main menu appears; stop it as soon as gameplay begins.
+        if (s == GameState.MainMenu)
+        {
+            ending = false;
+            if (menuMusic && menuMusicClip)
+            {
+                menuMusicFadeTarget = menuMusicVolume;
+                if (!menuMusic.isPlaying) { menuMusic.clip = menuMusicClip; menuMusic.Play(); }
+            }
+        }
+        else if (s == GameState.Playing || s == GameState.PrayerEmergency)
+        {
+            menuMusicFadeTarget = 0f;
+        }
     }
 
     // ---------------------------------------------------------------- adaptive ambience
+
+    public bool SuppressAmbience { get; set; }
 
     void Update()
     {
@@ -211,17 +268,21 @@ public class AudioManager : MonoBehaviour
         bool dark = fuel && fuel.Depleted;
 
         // Insects are loud when you are safe and fall silent as the light fails: silence is tension.
-        float insectsTarget = ending ? insectsVolume : insectsVolume * Mathf.Clamp01((fuel01 - 0.2f) / 0.5f);
+        float insectsTarget = ending || SuppressAmbience ? 0f : insectsVolume * Mathf.Clamp01((fuel01 - 0.2f) / 0.5f);
         float fear = dark ? 1f : Mathf.Clamp01(1f - fuel01 / 0.35f);
         float proximity = vampires ? Mathf.Clamp01(1f - (vampires.NearestVampireDistance - 3f) / 12f) : 0f;
-        float droneTarget = ending || inMenu ? 0f : droneVolume * Mathf.Max(fear, proximity * 0.8f);
+        float droneTarget = ending || inMenu || SuppressAmbience ? 0f : droneVolume * Mathf.Max(fear, proximity * 0.8f);
         if (praying) droneTarget *= 0.2f;
 
-        Fade(wind, windVolume * (ending ? 0.5f : 1f), dt, 0.5f);
+        Fade(wind, SuppressAmbience ? 0f : windVolume * (ending ? 0.5f : 1f), dt, 0.5f);
         Fade(insects, insectsTarget, dt, 0.3f);
         Fade(drone, droneTarget, dt, 0.4f);
-        Fade(choir, praying ? choirVolume : 0f, dt, praying ? 0.6f : 0.25f);
-        Fade(crackle, dark || inMenu || ending ? 0f : crackleVolume * (0.4f + 0.6f * fuel01), dt, 1f);
+        Fade(choir, praying && !SuppressAmbience ? choirVolume : 0f, dt, praying ? 0.6f : 0.25f);
+        Fade(crackle, dark || inMenu || ending || SuppressAmbience ? 0f : crackleVolume * (0.4f + 0.6f * fuel01), dt, 1f);
+
+        // Menu music fades driven by menuMusicFadeTarget (set in OnStateChanged / FadeMenuMusicRoutine).
+        if (menuMusic && menuMusic.isPlaying)
+            menuMusic.volume = Mathf.MoveTowards(menuMusic.volume, menuMusicFadeTarget * masterVolume, 0.6f * dt);
 
         UpdateHeartbeat(inMenu, fuel01, dark);
     }

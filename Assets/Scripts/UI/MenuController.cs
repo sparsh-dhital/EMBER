@@ -43,7 +43,7 @@ public class MenuController : MonoBehaviour
 
     void Awake()
     {
-        Hook(startButton, () => GameManager.Instance.StartGame());
+        Hook(startButton, OnStartPressed);
         Hook(howToPlayButton, () => showingHowTo = true);
         Hook(howToPlayBackButton, () => showingHowTo = false);
         Hook(quitButton, () => GameManager.Instance.QuitGame());
@@ -65,6 +65,9 @@ public class MenuController : MonoBehaviour
     void OnEnable() => GameEvents.StateChanged += OnStateChanged;
     void OnDisable() => GameEvents.StateChanged -= OnStateChanged;
 
+    bool hasPlayedIntro = false;
+    bool playingIntro = false;
+
     void Start()
     {
         if (controlsText)
@@ -73,6 +76,49 @@ public class MenuController : MonoBehaviour
                 ? "Left thumb: move  ·  Right side: look  ·  Push the stick fully to run\nJUMP  ·  CRAWL  ·  VIEW switches first / third person  ·  SWORD once you carry one\nTAKE / USE appear near objects  ·  PRAY appears once you hold the locket"
                 : "WASD: move  ·  Mouse: look  ·  Shift: run  ·  Space: jump  ·  C: crawl  ·  V: first / third person\nE: interact  ·  Left click / F: sword  ·  P: pray  ·  Esc: pause";
         }
+
+        if (!hasPlayedIntro)
+        {
+            hasPlayedIntro = true;
+            playingIntro = true;
+            StartCoroutine(IntroRoutine());
+        }
+    }
+
+    System.Collections.IEnumerator IntroRoutine()
+    {
+        var am = Object.FindFirstObjectByType<AudioManager>();
+        if (am) am.SuppressAmbience = true;
+        
+        AudioManager.Play(Sfx.Opening, 1.2f);
+        
+        // Short dramatic pause for the opening sound
+        yield return new WaitForSeconds(4f);
+        
+        if (am) am.SuppressAmbience = false;
+        playingIntro = false;
+    }
+
+    void OnStartPressed()
+    {
+        // Disable the button immediately so it cannot be pressed twice.
+        if (startButton) startButton.interactable = false;
+        StartCoroutine(StartSequence());
+    }
+
+    System.Collections.IEnumerator StartSequence()
+    {
+        // 1. Fade out menu music over 1.2 s.
+        AudioManager.FadeMenuMusic(1.2f);
+
+        // 2. Play the terror sweep ONCE (non-looping one-shot via the normal SFX path).
+        AudioManager.Play(Sfx.Opening, 1f);
+
+        // 3. Brief pause so the sweep can land before gameplay ambience kicks in.
+        yield return new WaitForSeconds(1.0f);
+
+        // 4. Hand off to gameplay.
+        GameManager.Instance.StartGame();
     }
 
     static void Hook(Button b, UnityEngine.Events.UnityAction action)
@@ -129,9 +175,14 @@ public class MenuController : MonoBehaviour
         foreach (var g in new[] { titleScreen, howToPlayScreen, pauseScreen, victoryScreen, defeatScreen })
         {
             if (!g) continue;
-            bool on = g == current;
-            float speed = gm.State == GameState.Victory || gm.State == GameState.Defeat ? 0.8f : 4f;
-            g.alpha = Mathf.MoveTowards(g.alpha, on ? 1f : 0f, dt * (on ? speed : 6f));
+            bool on = g == current && !playingIntro;
+            float speed = gm.State == GameState.Victory || gm.State == GameState.Defeat ? 0.8f : (playingIntro ? 0f : 4f);
+            
+            if (playingIntro) 
+                g.alpha = 0f;
+            else
+                g.alpha = Mathf.MoveTowards(g.alpha, on ? 1f : 0f, dt * (on ? speed : 6f));
+                
             g.blocksRaycasts = on;
             g.interactable = on && g.alpha > 0.5f;
         }
