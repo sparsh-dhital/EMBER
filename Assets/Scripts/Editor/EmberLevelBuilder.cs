@@ -483,7 +483,7 @@ public static class EmberLevelBuilder
             float lean = (float)(rng.NextDouble() * 24.0 - 12.0);
             Cyl("FencePost" + i, g, new Vector3(x, 0.55f, 4.2f), 0.06f, 1.2f, "WoodDark", new Vector3(lean, 0f, lean * 0.5f));
         }
-        Box("FenceRail", g, new Vector3(-1.5f, 0.85f, 4.2f), new Vector3(5f, 0.08f, 0.06f), "WoodDark", new Vector3(0f, 0f, 3f), false);
+        Box("FenceRail", g, new Vector3(-1.5f, 0.85f, 4.2f), new Vector3(5f, 0.08f, 0.06f), "WoodDark", new Vector3(0f, 0f, 3f));
     }
 
     static void BuildTruck(Transform parent)
@@ -532,16 +532,26 @@ public static class EmberLevelBuilder
         Box("GuardE", g, new Vector3(1.42f, deck + 0.45f, 0f), new Vector3(0.04f, 0.9f, 2.9f), "Wood", default, true);
         Box("Roof", g, new Vector3(0f, deck + 2.25f, 0f), new Vector3(3.4f, 0.1f, 3.4f), "Roof", new Vector3(0f, 0f, 6f));
 
-        // Real steps (0.25 m rise) so the CharacterController climbs them properly.
-        const int steps = 13;
-        float rise = deck / steps;
-        for (int i = 0; i < steps; i++)
+        // Real steps (0.25 m rise) so the CharacterController climbs them. The post stands on a hill, so the flight
+        // keeps going downhill from the deck until it meets the terrain; every step is solid down into the ground.
+        float rise = deck / 13f;
+        int count = 0;
+        for (int k = 0; k < 40; k++)
         {
-            float top = (i + 1) * rise;
-            float x = -1.45f - (steps - 1 - i) * 0.34f - 0.17f;
-            Box("Step" + i, g, new Vector3(x, (top - 1.5f) / 2f, -0.6f), new Vector3(0.34f, top + 1.5f, 1.1f), "Wood");
+            float top = deck - k * rise;
+            float x = -1.45f - k * 0.34f - 0.17f;
+            Vector3 world = g.TransformPoint(new Vector3(x, 0f, -0.5f));
+            float ground = GroundY(world.x, world.z) - g.position.y;
+            if (top <= ground + 0.05f) break;
+            float bottom = ground - 0.5f;
+            Box("Step" + k, g, new Vector3(x, (top + bottom) / 2f, -0.5f), new Vector3(0.34f, top - bottom, 1.6f), "Wood");
+            count++;
         }
-        Box("StairRail", g, new Vector3(-3.6f, 2.4f, -1.2f), new Vector3(4.6f, 0.07f, 0.07f), "WoodDark", new Vector3(0f, 0f, 35f), false);
+        float railLength = count * 0.34f;
+        float railDrop = count * rise;
+        Box("StairRail", g, new Vector3(-1.45f - railLength / 2f, deck - railDrop / 2f + 0.9f, -1.35f),
+            new Vector3(Mathf.Sqrt(railLength * railLength + railDrop * railDrop), 0.07f, 0.07f), "WoodDark",
+            new Vector3(0f, 0f, Mathf.Atan2(railDrop, railLength) * Mathf.Rad2Deg), false);
 
         Box("Crate", g, new Vector3(0.7f, deck + 0.3f, 0.7f), new Vector3(0.6f, 0.45f, 0.6f), "Wood", new Vector3(0f, 20f, 0f));
         PlaceRadioPart(g, new Vector3(0.65f, deck + 0.53f, 0.65f), 10f, "Transmitter Valve");
@@ -700,16 +710,18 @@ public static class EmberLevelBuilder
             {
                 Cyl("Trunk", t, new Vector3(0f, 1.1f, 0f), 0.2f, 2.4f, "Bark", default, false);
                 string m = rng.NextDouble() < 0.5 ? "Pine" : "PineDark";
-                ConePart(t, cone, new Vector3(0f, 1.3f, 0f), 1.7f, 2.4f, m);
-                ConePart(t, cone, new Vector3(0f, 2.6f, 0f), 1.3f, 2.1f, m);
-                ConePart(t, cone, new Vector3(0f, 3.8f, 0f), 0.9f, 1.8f, m);
+                ConePart(t, cone, new Vector3(0f, 1.55f, 0f), 1.35f, 2.3f, m);
+                ConePart(t, cone, new Vector3(0f, 2.75f, 0f), 1.1f, 2.1f, m);
+                ConePart(t, cone, new Vector3(0f, 3.9f, 0f), 0.8f, 1.8f, m);
             }
             var col = new GameObject("TreeCollider");
             col.transform.SetParent(colliders, false);
-            col.transform.position = new Vector3(p.x, y + 1.5f, p.y);
+            float colHeight = dead ? 3.5f : 5.5f * s;
+            col.transform.position = new Vector3(p.x, y + colHeight * 0.5f, p.y);
             var cap = col.AddComponent<CapsuleCollider>();
-            cap.radius = dead ? 0.2f * s : 0.3f * s;
-            cap.height = 3f;
+            // Pines block roughly at the edge of their lowest branches, not just the trunk, so the player never walks into foliage.
+            cap.radius = dead ? 0.22f * s : 0.8f * s;
+            cap.height = colHeight;
             SetStatic(col);
         }
 
@@ -771,7 +783,7 @@ public static class EmberLevelBuilder
             if (!IsClearArea(p, 1f)) continue;
             float s = 0.5f + (float)rng.NextDouble() * 1.4f;
             var scale = new Vector3(s * (0.8f + (float)rng.NextDouble() * 0.5f), s * (0.6f + (float)rng.NextDouble() * 0.5f), s);
-            Rock("Rock" + placed, rocks, new Vector3(p.x, GroundY(p.x, p.y) + 0.1f * s, p.y), scale, (float)rng.NextDouble() * 360f, placed, placed % 4 == 0 ? "Stone" : "Rock", s > 0.8f);
+            Rock("Rock" + placed, rocks, new Vector3(p.x, GroundY(p.x, p.y) + 0.1f * s, p.y), scale, (float)rng.NextDouble() * 360f, placed, placed % 4 == 0 ? "Stone" : "Rock");
             placed++;
         }
     }
@@ -864,7 +876,7 @@ public static class EmberLevelBuilder
         vig.smoothness.Override(0.45f);
         vig.color.Override(Color.black);
         var col = profile.Add<ColorAdjustments>(true);
-        col.postExposure.Override(0.45f);
+        col.postExposure.Override(0.2f);
         col.contrast.Override(10f);
         col.saturation.Override(-12f);
         col.colorFilter.Override(new Color(0.94f, 0.97f, 1f));

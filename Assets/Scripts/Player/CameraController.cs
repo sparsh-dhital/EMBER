@@ -98,12 +98,16 @@ public class CameraController : MonoBehaviour
         if (!player || Time.unscaledTime - lastLookTime < recenterDelay) return;
         if (player.HorizontalSpeed < 1f) return;
 
-        float playerYaw = player.transform.eulerAngles.y;
-        float current = orbit.HorizontalAxis.Value;
-        float diff = Mathf.DeltaAngle(current, playerYaw);
-        // Only swing around when the player walks away from the camera, never spin 180° on its own.
-        if (Mathf.Abs(diff) > 100f) return;
-        orbit.HorizontalAxis.Value = current + Mathf.Clamp(diff, -recenterSpeed * dt, recenterSpeed * dt);
+        // Compare against where the camera actually looks (the framing offset turns it a few degrees away from the
+        // orbit angle). Comparing against the orbit angle made the camera chase its own offset and slowly spin.
+        var cam = Camera.main;
+        if (!cam) return;
+        Vector3 view = cam.transform.forward;
+        float cameraYaw = Mathf.Atan2(view.x, view.z) * Mathf.Rad2Deg;
+        float diff = Mathf.DeltaAngle(cameraYaw, player.transform.eulerAngles.y);
+        // Only ease in behind a player walking roughly away from the camera; strafing or walking toward it never spins it.
+        if (Mathf.Abs(diff) > 60f) return;
+        orbit.HorizontalAxis.Value += Mathf.Clamp(diff, -recenterSpeed * dt, recenterSpeed * dt);
     }
 
     void UpdateLens(float dt)

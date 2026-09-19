@@ -136,13 +136,19 @@ public class PlayerController : MonoBehaviour
 
     void CheckGround()
     {
+        // The sphere answers "is there ground under my feet?" (it also catches step edges).
         float radius = controller.radius * 0.95f;
         Vector3 origin = transform.position + controller.center + Vector3.down * (controller.height * 0.5f - controller.radius);
-        bool hit = Physics.SphereCast(origin + Vector3.up * 0.05f, radius, Vector3.down, out RaycastHit info,
+        bool sphereHit = Physics.SphereCast(origin + Vector3.up * 0.05f, radius, Vector3.down, out _,
             groundCheckDistance + controller.skinWidth + 0.05f, groundLayers, QueryTriggerInteraction.Ignore);
+        IsGrounded = controller.isGrounded || sphereHit;
 
-        IsGrounded = controller.isGrounded || hit;
-        GroundNormal = hit ? info.normal : Vector3.up;
+        // The slope angle comes from a ray straight down the middle: a sphere touching a step's edge reports an
+        // almost vertical normal, which made stairs look like an unclimbable cliff.
+        float rayLength = controller.height * 0.5f + groundCheckDistance + controller.stepOffset;
+        bool rayHit = Physics.Raycast(transform.position + controller.center, Vector3.down, out RaycastHit ray,
+            rayLength, groundLayers, QueryTriggerInteraction.Ignore);
+        GroundNormal = IsGrounded && rayHit ? ray.normal : Vector3.up;
     }
 
     void UpdateFacing(float dt)

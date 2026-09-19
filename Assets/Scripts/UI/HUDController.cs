@@ -67,7 +67,7 @@ public class HUDController : MonoBehaviour
     public Color holy = new Color(1f, 0.92f, 0.7f);
     public Color signal = new Color(0.55f, 0.95f, 0.78f);
 
-    float messageTimer, messageAlphaTarget;
+    float messageTimer;
     float fuelPunch, partsPunch, floaterTimer, hitFlash;
     string lastObjective;
     float objectiveFade = 1f;
@@ -131,7 +131,8 @@ public class HUDController : MonoBehaviour
     void OnRelit() => ShowMessage("THE FLAME RETURNS", "", 2f);
     void OnDamaged(float amount) => hitFlash = 1f;
     void OnPartCollected(int collected, int required) => partsPunch = 1f;
-    void OnPrayerStarted() => ShowMessage("YOU ARE PROTECTED", "Reach the radio centre", 3.5f);
+    // The cross and the countdown say it all; clear any lingering "press P to pray" message.
+    void OnPrayerStarted() => messageTimer = 0f;
 
     void OnFuelWarning(float level)
     {
@@ -330,6 +331,7 @@ public class HUDController : MonoBehaviour
         if (!damageFlash) return;
         hitFlash = Mathf.MoveTowards(hitFlash, 0f, dt * 1.8f);
         float injury = health ? (1f - health.Fraction) * 0.35f : 0f;
+        if (prayer && prayer.IsActive) injury *= 0.25f;
         Color c = damageFlash.color;
         c.a = Mathf.Max(hitFlash * 0.55f, injury);
         damageFlash.color = c;

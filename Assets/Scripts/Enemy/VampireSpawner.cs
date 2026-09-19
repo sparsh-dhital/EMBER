@@ -47,8 +47,12 @@ public class VampireSpawner : MonoBehaviour
     [Tooltip("Optional hand-placed spawn points. Random points around the player are also tried.")]
     public Transform[] spawnPoints;
 
+    [Tooltip("Turn off to stop the director spawning on its own (used by the automated playtest).")]
+    public bool autoSpawn = true;
+
     public bool FinalWave { get; private set; }
     public int AliveCount { get; private set; }
+    public IReadOnlyList<VampireAI> Alive => alive;
     public float NearestVampireDistance { get; private set; } = 999f;
 
     readonly List<VampireAI> pool = new List<VampireAI>();
@@ -84,6 +88,21 @@ public class VampireSpawner : MonoBehaviour
         enabled = false;
     }
 
+    // Places a pooled vampire at a chosen spot, skipping the fairness rules. For tests only.
+    public VampireAI DebugSpawnAt(Vector3 position)
+    {
+        foreach (var v in pool)
+        {
+            if (v.gameObject.activeSelf) continue;
+            if (!NavMesh.SamplePosition(position, out NavMeshHit hit, 3f, NavMesh.AllAreas)) return null;
+            v.Spawn(hit.position);
+            alive.Add(v);
+            AliveCount = alive.Count;
+            return v;
+        }
+        return null;
+    }
+
     public void Release(VampireAI v)
     {
         v.gameObject.SetActive(false);
@@ -116,6 +135,7 @@ public class VampireSpawner : MonoBehaviour
         if (gm && !gm.IsGameplayActive) return;
         float t = gm ? gm.SurvivalTime : Time.timeSinceLevelLoad;
 
+        if (!autoSpawn) return;
         int desired = DesiredCount();
         if (alive.Count < desired && t >= nextSpawnTime)
         {

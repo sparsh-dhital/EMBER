@@ -20,6 +20,8 @@ public class PrayerSystem : MonoBehaviour
     public Light holyLight;
     public float holyLightIntensity = 16f;
     public float holyLightRange = 17f;
+    [Tooltip("Height of the cross above the player's feet.")]
+    public float crossHeight = 2.55f;
     public ParticleSystem risingMotes;
     public ParticleSystem activationRing;
 
@@ -77,7 +79,7 @@ public class PrayerSystem : MonoBehaviour
                 toCam.y = 0f;
                 if (toCam.sqrMagnitude > 0.01f) crossRoot.rotation = Quaternion.LookRotation(-toCam.normalized, Vector3.up);
             }
-            crossRoot.localPosition = new Vector3(0f, 2.75f + Mathf.Sin(Time.time * 1.3f) * 0.06f, 0f);
+            crossRoot.localPosition = new Vector3(0f, crossHeight + Mathf.Sin(Time.time * 1.3f) * 0.06f, 0f);
         }
     }
 

@@ -182,7 +182,7 @@ public static class EmberCharacterBuilder
     static void BuildPrayerVisuals(PlayerParts p, Transform player)
     {
         var holy = EmberArt.Load("HolyLight");
-        var cross = Bone("PrayerCross", player, new Vector3(0f, 2.75f, 0f));
+        var cross = Bone("PrayerCross", player, new Vector3(0f, 2.55f, 0f));
         p.crossRoot = cross;
         var v = Part("Upright", PrimitiveType.Cube, cross, new Vector3(0f, 0f, 0f), new Vector3(0.085f, 0.9f, 0.05f), holy);
         var h = Part("Crossbeam", PrimitiveType.Cube, cross, new Vector3(0f, 0.19f, 0f), new Vector3(0.52f, 0.085f, 0.05f), holy);

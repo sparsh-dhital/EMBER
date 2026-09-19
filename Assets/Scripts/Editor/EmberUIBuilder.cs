@@ -161,7 +161,7 @@ public static class EmberUIBuilder
         hud.callBar.type = Image.Type.Filled;
         hud.callBar.fillMethod = Image.FillMethod.Horizontal;
 
-        var cd = Place(Rect("PrayerCountdown", hudRect), T, T, new Vector2(0f, -150f), new Vector2(130f, 150f));
+        var cd = Place(Rect("PrayerCountdown", hudRect), TL, T, new Vector2(122f, -120f), new Vector2(130f, 150f));
         hud.countdownGroup = cd.gameObject.AddComponent<CanvasGroup>();
         hud.countdownGroup.alpha = 0f;
         Place(Img("Glow", cd, "S_Glow", new Color(1f, 0.85f, 0.5f, 0.12f)), T, C, new Vector2(0f, -60f), new Vector2(220f, 220f));
@@ -175,7 +175,7 @@ public static class EmberUIBuilder
         Place(Txt("Label", cd, "PROTECTED", 14f, Holy, TextAlignmentOptions.Center, regular, 10f), T, T, new Vector2(0f, -124f), new Vector2(200f, 22f));
 
         // Big centred messages.
-        var msg = Place(Rect("Message", hudRect), C, C, new Vector2(0f, 150f), new Vector2(1600f, 160f));
+        var msg = Place(Rect("Message", hudRect), C, C, new Vector2(0f, 250f), new Vector2(1600f, 160f));
         hud.messageGroup = msg.gameObject.AddComponent<CanvasGroup>();
         hud.messageGroup.alpha = 0f;
         hud.messageTitle = Place(Txt("Title", msg, "THE FLAME IS OUT", 64f, Warm, TextAlignmentOptions.Center, semibold, 18f), C, C, new Vector2(0f, 30f), new Vector2(1600f, 80f));
