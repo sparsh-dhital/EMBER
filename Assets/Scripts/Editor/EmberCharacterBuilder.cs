@@ -233,6 +233,8 @@ public static class EmberCharacterBuilder
         var omMat = EmberArt.Load("OmSymbol");
         var om = Bone("PrayerOm", player, new Vector3(0f, 2.55f, 0f));
         p.crossRoot = om;
+        // Hidden until a prayer is actually answered, which needs the locket and a dead flame.
+        om.gameObject.SetActive(false);
 
         var plate = Part("OmPlate", PrimitiveType.Quad, om, Vector3.zero, new Vector3(1.05f, 1.05f, 1f), omMat);
         NoShadow(plate);
@@ -267,8 +269,13 @@ public static class EmberCharacterBuilder
         pm.startLifetime = new ParticleSystem.MinMaxCurve(2.5f, 4f);
         pm.startSpeed = new ParticleSystem.MinMaxCurve(0.3f, 0.8f);
         var sh = p.prayerMotes.shape; sh.shapeType = ParticleSystemShapeType.Circle; sh.rotation = new Vector3(-90f, 0f, 0f); sh.radius = 3f;
+        // These are parented to the player, not to the Om, so hiding the symbol does not hide
+        // them. PrayerSystem plays them when a prayer starts; they must be silent until then.
+        pm.playOnAwake = false;
 
         p.prayerRing = EmberFX.Ring(player, new Vector3(0f, 0.08f, 0f), new Color(1f, 0.6f, 0.2f, 0.9f), 34f, 1.6f, "PrayerRing");
+        var pr = p.prayerRing.main;
+        pr.playOnAwake = false;
     }
 
     // ------------------------------------------------------------------ helpers

@@ -73,6 +73,18 @@ public class PrayerSystem : MonoBehaviour
     void Awake()
     {
         SetVisuals(0f);
+
+        // The rising motes and the ground ring are parented to the player rather than to the
+        // Om, and the particle helper builds them with playOnAwake set. Hiding the symbol
+        // therefore did not hide them, and the prayer effect appeared to be running from the
+        // first frame. Stop and clear them here so nothing shows until a prayer is answered.
+        StopPrayerVfx();
+    }
+
+    void StopPrayerVfx()
+    {
+        if (risingMotes) { risingMotes.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear); }
+        if (activationRing) { activationRing.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear); }
     }
 
     public void Unlock()
