@@ -135,6 +135,16 @@ public class EmberPlaytest : MonoBehaviour
 
     static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
 
+    // Removes fuel cans near a test arena. Several arenas now sit within pickup range of a
+    // can; the player collects it on teleport, the lantern relights, and any test that
+    // depends on the flame being out quietly measures the wrong thing.
+    static void ClearFuelNear(Vector3 centre, float radius = 9f)
+    {
+        foreach (var can in FindObjectsByType<FuelPickup>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            if (Vector3.Distance(can.transform.position, centre) < radius)
+                can.gameObject.SetActive(false);
+    }
+
     // Nudges a probe position back onto walkable ground. The world is an archipelago now,
     // so a point "19 m ahead" can easily be open sea, where a vampire cannot be spawned.
     static Vector3 LandNear(Vector3 wanted)
@@ -538,6 +548,7 @@ public class EmberPlaytest : MonoBehaviour
     IEnumerator VampireAndPrayerTests()
     {
         Vector3 arena = GroundAt(new Vector3(-6f, 0f, 9f));
+        ClearFuelNear(arena);
         Teleport(arena, 0f);
         fuel.DebugSetFraction(1f);
         yield return Wait(1.6f);
@@ -1133,6 +1144,7 @@ public class EmberPlaytest : MonoBehaviour
         bool freshRun = gm.State == GameState.Playing && fuel.Fraction > 0.95f && mission.Collected == 0;
 
         Vector3 arena = GroundAt(new Vector3(-6f, 0f, 9f));
+        ClearFuelNear(arena);
         Teleport(arena, 0f);
         fuel.DebugSetFraction(0f);
         yield return Wait(0.5f);

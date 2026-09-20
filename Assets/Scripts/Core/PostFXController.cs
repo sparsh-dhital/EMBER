@@ -26,6 +26,7 @@ public class PostFXController : MonoBehaviour
     Vignette vignette;
     ColorAdjustments colour;
     ChromaticAberration aberration;
+    Bloom bloom;
     float hit;
     float prayerBlend;
     float baseExposure;
@@ -38,7 +39,34 @@ public class PostFXController : MonoBehaviour
         profile.TryGet(out vignette);
         profile.TryGet(out colour);
         profile.TryGet(out aberration);
+        profile.TryGet(out bloom);
         if (colour) baseExposure = colour.postExposure.value;
+
+        TrimForMobile();
+    }
+
+    /// <summary>
+    /// Drops the full-screen effects that cost the most bandwidth for the least on a phone.
+    ///
+    /// Chromatic aberration is a separate full-screen pass whose whole effect is a couple of
+    /// pixels of fringing - invisible at phone size and pure cost. Bloom is worth keeping
+    /// because the lantern and the Om are the game's whole visual identity, but it runs at
+    /// half resolution with fewer iterations, which is close to free on a tiled GPU.
+    /// </summary>
+    void TrimForMobile()
+    {
+        if (!Application.isMobilePlatform) return;
+
+        if (aberration) aberration.active = false;
+        if (bloom)
+        {
+            bloom.highQualityFiltering.overrideState = true;
+            bloom.highQualityFiltering.value = false;
+            bloom.downscale.overrideState = true;
+            bloom.downscale.value = BloomDownscaleMode.Quarter;
+            bloom.maxIterations.overrideState = true;
+            bloom.maxIterations.value = 3;
+        }
     }
 
     void OnEnable() => GameEvents.PlayerDamaged += OnHit;

@@ -87,6 +87,12 @@ public class PrayerSystem : MonoBehaviour
     {
         if (InputReader.Instance.PrayPressed) TryPray();
 
+        // The Om only exists while a prayer is being answered. It is hidden in Awake, but
+        // enforce it every frame as well: the symbol must never be visible before the locket
+        // is found and the flame has died, whatever state the scene was authored in.
+        if (crossRoot && strength <= 0f && crossRoot.gameObject.activeSelf)
+            crossRoot.gameObject.SetActive(false);
+
         if (crossRoot && strength > 0f)
         {
             // The cross always faces the camera so its shape reads clearly, and floats gently.
