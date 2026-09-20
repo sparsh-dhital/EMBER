@@ -79,12 +79,41 @@ public class PrayerSystem : MonoBehaviour
         // therefore did not hide them, and the prayer effect appeared to be running from the
         // first frame. Stop and clear them here so nothing shows until a prayer is answered.
         StopPrayerVfx();
+        HideStrayPrayerVisuals();
     }
 
     void StopPrayerVfx()
     {
         if (risingMotes) { risingMotes.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear); }
         if (activationRing) { activationRing.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear); }
+    }
+
+    /// <summary>
+    /// Hides orphaned copies of the prayer visuals.
+    ///
+    /// They hang off the player root rather than the model, so a scene rebuild - which only
+    /// replaces the model - left the previous set behind. Scenes built repeatedly ended up
+    /// with a stack of them, and because only one is wired to this component the rest were
+    /// never hidden: they glowed with the material's baked emission from the first frame,
+    /// with no locket collected and the lantern still full.
+    ///
+    /// The builder no longer creates duplicates, but this repairs scenes that already have
+    /// them without needing a rebuild.
+    /// </summary>
+    void HideStrayPrayerVisuals()
+    {
+        foreach (var t in GetComponentsInChildren<Transform>(true))
+        {
+            if (!t || t == transform || t == crossRoot) continue;
+            if (t.name != "PrayerOm" && t.name != "PrayerCross" &&
+                t.name != "PrayerMotes" && t.name != "PrayerRing") continue;
+
+            // Never touch the ones this component actually drives.
+            var ps = t.GetComponent<ParticleSystem>();
+            if (ps && (ps == risingMotes || ps == activationRing)) continue;
+
+            t.gameObject.SetActive(false);
+        }
     }
 
     public void Unlock()

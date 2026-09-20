@@ -227,6 +227,27 @@ public static class EmberCharacterBuilder
 
     static void BuildPrayerVisuals(PlayerParts p, Transform player)
     {
+        // Clear any previous set first. These hang off the player root rather than the model,
+        // so the model rebuild that cleans the lantern and sword does not touch them, and they
+        // accumulate one full set per scene build. The orphans are wired to nothing, so nothing
+        // hides them, and they glow with the material's baked emission from the first frame.
+        var stale = new System.Collections.Generic.List<GameObject>();
+        foreach (var t in player.GetComponentsInChildren<Transform>(true))
+        {
+            if (!t || t == player) continue;
+            switch (t.name)
+            {
+                case "PrayerOm":
+                case "PrayerCross":      // pre-Om name, still present in older scenes
+                case "PrayerMotes":
+                case "PrayerRing":
+                case "HolyLight":
+                    stale.Add(t.gameObject);
+                    break;
+            }
+        }
+        foreach (var go in stale) if (go) UnityEngine.Object.DestroyImmediate(go);
+
         // The prayer sign is the Hindu Om. It is a single alpha-cut plate rather than built
         // geometry, so the glyph stays perfectly formed at any distance, and it always faces
         // the camera (PrayerSystem billboards crossRoot each frame).
