@@ -22,6 +22,7 @@ public static class EmberUIBuilder
         public HUDController hud;
         public MenuController menu;
         public TouchControls touch;
+        public PuzzlePanel puzzle;
     }
 
     // ------------------------------------------------------------------ fonts
@@ -89,8 +90,90 @@ public static class EmberUIBuilder
 
         refs.touch = BuildTouch(safe);
         refs.hud = BuildHUD(safe, damage);
+        // The repair board sits above the HUD but below the menus, so pausing still wins.
+        refs.puzzle = BuildPuzzlePanel(safe);
         refs.menu = BuildMenus(safe);
+
+        // Fonts are created dynamic by TMP; bake them static so text stays sharp and stable.
+        EmberFonts.BakeAll();
         return refs;
+    }
+
+    // ------------------------------------------------------------------ repair puzzles
+
+    // The frame every radio-part puzzle plays inside. The board area is left empty here:
+    // each puzzle builds its own controls into it at runtime through PuzzleWidgets, which
+    // keeps five different mechanics from needing five hand-built layouts.
+    static PuzzlePanel BuildPuzzlePanel(Transform parent)
+    {
+        var rect = Rect("PuzzlePanel", parent);
+        Stretch(rect);
+        var panel = rect.gameObject.AddComponent<PuzzlePanel>();
+        panel.group = rect.gameObject.AddComponent<CanvasGroup>();
+        panel.group.alpha = 0f;
+        panel.group.blocksRaycasts = false;
+
+        // Full-screen scrim: dims and, crucially, swallows clicks aimed at the world.
+        var backdrop = Img("Backdrop", rect, null, new Color(0.02f, 0.02f, 0.03f, 0.88f), true);
+        Stretch(backdrop.rectTransform);
+        panel.backdrop = backdrop;
+
+        var frame = Place(Rect("Frame", rect), C, C, Vector2.zero, new Vector2(880f, 660f));
+        var plate = Img("Plate", frame, "S_Rounded", new Color(0.07f, 0.065f, 0.06f, 0.97f), true);
+        Stretch(plate.rectTransform);
+        plate.type = Image.Type.Sliced;
+        var edge = Img("Edge", frame, "S_Rounded", new Color(1f, 0.72f, 0.36f, 0.22f));
+        Stretch(edge.rectTransform);
+        edge.type = Image.Type.Sliced;
+
+        panel.titleText = Place(Txt("Title", frame, "RADIO PART", 30f, Warm,
+            TextAlignmentOptions.Center, semibold, 6f), T, T, new Vector2(0f, -30f), new Vector2(760f, 40f));
+        panel.subtitleText = Place(Txt("Subtitle", frame, "", 17f, Dim,
+            TextAlignmentOptions.Center, regular, 8f), T, T, new Vector2(0f, -68f), new Vector2(760f, 26f));
+
+        var rule = Img("Rule", frame, "S_Bar", new Color(1f, 1f, 1f, 0.12f));
+        rule.type = Image.Type.Sliced;
+        Place(rule.rectTransform, T, T, new Vector2(0f, -94f), new Vector2(780f, 2f));
+
+        // Where the puzzle builds itself.
+        panel.board = Place(Rect("Board", frame), C, C, new Vector2(0f, -8f), new Vector2(800f, 460f));
+
+        // Footer controls, built with the same widget factory the boards use so they
+        // behave identically.
+        var style = BuildPuzzleStyle();
+        panel.style = style;
+
+        panel.hintButton = PuzzleWidgets.Button("Hint", frame, style, "HINT",
+            new Vector2(-150f, -272f), new Vector2(200f, 48f), () => panel.UseHint(), 19f);
+        panel.closeButton = PuzzleWidgets.Button("Close", frame, style, "LEAVE IT",
+            new Vector2(150f, -272f), new Vector2(200f, 48f), () => panel.Abandon(), 19f);
+        panel.hintText = panel.hintButton.Label;
+
+        return panel;
+    }
+
+    // One palette and one font pairing for every board, matching the HUD.
+    static PuzzleStyle BuildPuzzleStyle()
+    {
+        return new PuzzleStyle
+        {
+            regular = regular,
+            semibold = semibold,
+            panel = EmberArt.LoadSprite("S_Rounded"),
+            bar = EmberArt.LoadSprite("S_Bar"),
+            circle = EmberArt.LoadSprite("S_Circle"),
+            ring = EmberArt.LoadSprite("S_Ring"),
+            ringThick = EmberArt.LoadSprite("S_RingThick"),
+            glow = EmberArt.LoadSprite("S_Glow"),
+            chevron = EmberArt.LoadSprite("S_Chevron"),
+            warm = Warm,
+            cream = Cream,
+            dim = Dim,
+            good = new Color(0.55f, 0.88f, 0.58f),
+            bad = new Color(0.93f, 0.42f, 0.35f),
+            inkPanel = new Color(0.06f, 0.055f, 0.05f, 0.94f),
+            inkSlot = new Color(1f, 1f, 1f, 0.07f),
+        };
     }
 
     // ------------------------------------------------------------------ HUD
@@ -115,6 +198,22 @@ public static class EmberUIBuilder
         hud.fuelBar.type = Image.Type.Filled;
         hud.fuelBar.fillMethod = Image.FillMethod.Horizontal;
         hud.fuelFloater = Place(Txt("Floater", fuel, "+25", 28f, Warm, TextAlignmentOptions.Left, semibold, 0f), TL, TL, new Vector2(190f, -30f), new Vector2(100f, 36f));
+
+        // Sword row, tucked under the fuel bar: three pips for the radiant chain and a
+        // one-line state. It fades out completely while the player is unarmed.
+        var swordRow = Place(Rect("Sword", hudRect), TL, TL, new Vector2(140f, -152f), new Vector2(280f, 46f));
+        hud.swordGroup = swordRow.gameObject.AddComponent<CanvasGroup>();
+        hud.swordGroup.alpha = 0f;
+        Place(Txt("Label", swordRow, "SWORD", 14f, Dim, TextAlignmentOptions.TopLeft, regular, 12f), TL, TL, new Vector2(0f, 0f), new Vector2(200f, 20f));
+        hud.swordText = Place(Txt("State", swordRow, "RADIANT READY", 16f, Warm, TextAlignmentOptions.TopLeft, semibold, 8f), TL, TL, new Vector2(0f, -18f), new Vector2(240f, 22f));
+        hud.comboPips = new Image[3];
+        for (int i = 0; i < hud.comboPips.Length; i++)
+        {
+            var pip = Img("Pip" + i, swordRow, "S_Bar", new Color(1f, 1f, 1f, 0.14f));
+            pip.type = Image.Type.Sliced;
+            Place(pip, TL, TL, new Vector2(150f + i * 18f, -22f), new Vector2(13f, 5f));
+            hud.comboPips[i] = pip;
+        }
 
         // Mission, top-right.
         var mission = Place(Rect("Mission", hudRect), TR, TR, new Vector2(-140f, -44f), new Vector2(460f, 130f));
@@ -254,7 +353,7 @@ public static class EmberUIBuilder
         tc.prayGlow = glow.rectTransform;
         Stretch(Img("Bg", pray, "S_Circle", new Color(0f, 0f, 0f, 0.35f), true).rectTransform);
         Stretch(Img("Ring", pray, "S_Ring", new Color(Holy.r, Holy.g, Holy.b, 0.8f)).rectTransform);
-        Place(Img("Cross", pray, "S_Cross", Holy), C, C, new Vector2(0f, 14f), new Vector2(50f, 50f));
+        Place(Img("Om", pray, "S_Om", Holy), C, C, new Vector2(0f, 14f), new Vector2(54f, 54f));
         Place(Txt("Label", pray, "PRAY", 20f, Holy, TextAlignmentOptions.Center, semibold, 8f), C, C, new Vector2(0f, -36f), new Vector2(136f, 28f));
         var prb = pray.gameObject.AddComponent<TouchButton>();
         prb.action = TouchButton.Action.Pray;
@@ -267,6 +366,14 @@ public static class EmberUIBuilder
         interact.sizeDelta = new Vector2(130f, 130f);
         var attack = RoundButton("AttackButton", rootRect, BR, new Vector2(-175f, 205f), 160f, "SWORD", Warm, TouchButton.Action.Attack, out tc.attackLabel);
         tc.attackButton = attack.gameObject.AddComponent<CanvasGroup>();
+        // Guard sits above the sword button: held rather than tapped, so it needs its own
+        // thumb position and a ring that lights while the stance is actually up.
+        var block = RoundButton("BlockButton", rootRect, BR, new Vector2(-330f, 195f), 120f, "GUARD", Cream, TouchButton.Action.Block, out _);
+        tc.blockButton = block.gameObject.AddComponent<CanvasGroup>();
+        var blockGlow = Img("Glow", block, "S_RingThick", new Color(1f, 0.93f, 0.72f, 0.85f));
+        Stretch(blockGlow.rectTransform);
+        tc.blockGlow = blockGlow.rectTransform;
+        blockGlow.gameObject.SetActive(false);
         RoundButton("JumpButton", rootRect, BR, new Vector2(-385f, 145f), 120f, "JUMP", Cream, TouchButton.Action.Jump, out _);
         RoundButton("CrawlButton", rootRect, BR, new Vector2(-165f, 420f), 110f, "CRAWL", Cream, TouchButton.Action.Crawl, out tc.crawlLabel);
         // View toggle sits beside pause, away from the thumbs.
@@ -330,7 +437,7 @@ public static class EmberUIBuilder
             "When the flame dies, prayer gives you one final chance.",
             "Return to the radio centre and call for help."
         };
-        string[] icons = { "S_Flame", "S_Flame", "S_Glow", "S_Chevron", "S_Circle", "S_Cross", "S_Chevron" };
+        string[] icons = { "S_Flame", "S_Flame", "S_Glow", "S_Chevron", "S_Circle", "S_Om", "S_Chevron" };
         for (int i = 0; i < lines.Length; i++)
         {
             float y = 250f - i * 62f;

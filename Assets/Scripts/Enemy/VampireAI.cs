@@ -9,7 +9,7 @@ using UnityEngine.AI;
 [RequireComponent(typeof(NavMeshAgent))]
 public class VampireAI : MonoBehaviour
 {
-    public enum State { Hidden, Flee, Stalk, Aggressive, Attack, Banished }
+    public enum State { Hidden, Flee, Stalk, Aggressive, Attack, Banished, Stagger, Dying }
 
     [Header("References")]
     public VampireAnimator visual;
@@ -72,6 +72,9 @@ public class VampireAI : MonoBehaviour
     bool struck;
     float banishTimer;
     float nextVoice;
+    float staggerTimer;
+    float deathTimer;
+    Vector3 knockVelocity;
 
     void Awake()
     {
@@ -89,15 +92,26 @@ public class VampireAI : MonoBehaviour
         prayer = prayerSystem;
     }
 
+    // Difficulty-scaled views of the designer's tuning values. Read these, never the raw fields.
+    float Damage => damage * GameConfig.Current.vampireDamageMultiplier;
+    float WindUp => windUpTime * GameConfig.Current.vampireWindUpMultiplier;
+    float SpeedScale => GameConfig.Current.vampireSpeedMultiplier;
+
     public void Spawn(Vector3 position)
     {
         gameObject.SetActive(true);
+        // A vampire that died had its agent and colliders switched off; pooling reuses the
+        // same object, so put it back together before it walks again.
+        if (!agent.enabled) agent.enabled = true;
+        foreach (var col in GetComponentsInChildren<Collider>(true)) col.enabled = true;
         agent.Warp(position);
         agent.isStopped = false;
         agent.updateRotation = true;
         circleSign = Random.value < 0.5f ? -1f : 1f;
         agent.avoidancePriority = Random.Range(40, 60);
         CurrentState = State.Hidden;
+        staggerTimer = deathTimer = 0f;
+        knockVelocity = Vector3.zero;
         nextThink = 0f;
         cooldownUntil = Time.time + 1f;
         banishTimer = 0f;
@@ -113,13 +127,86 @@ public class VampireAI : MonoBehaviour
         EnterState(State.Banished);
         banishTimer = 2.5f;
         agent.isStopped = false;
-        agent.speed = fleeSpeed;
+        agent.speed = fleeSpeed * SpeedScale;
         SetFleeDestination(12f);
+    }
+
+    // ---------------------------------------------------------------- taking a hit
+
+    /// <summary>
+    /// Knocked off balance by the sword. Interrupts whatever it was doing - including a
+    /// wind-up mid-swing, which is the whole point of a parry - and shoves it backwards.
+    /// </summary>
+    public void ApplyStagger(float seconds, Vector3 impulse)
+    {
+        if (CurrentState == State.Dying || CurrentState == State.Banished) return;
+
+        staggerTimer = Mathf.Max(staggerTimer, seconds);
+        knockVelocity = impulse;
+        struck = true;                       // cancels any strike that had not landed yet
+        cooldownUntil = Time.time + seconds + 0.3f;
+        CurrentState = State.Stagger;
+        if (agent.isOnNavMesh) { agent.isStopped = true; agent.ResetPath(); }
+        agent.updateRotation = false;
+    }
+
+    /// <summary>Killed by the sword: stop thinking, fall back, and let the ash take it.</summary>
+    public void BeginDeath(Vector3 impulse, float seconds)
+    {
+        CurrentState = State.Dying;
+        deathTimer = seconds;
+        knockVelocity = impulse;
+        if (agent.isOnNavMesh) { agent.isStopped = true; agent.ResetPath(); }
+        agent.updateRotation = false;
+        agent.enabled = false;
+        foreach (var col in GetComponentsInChildren<Collider>()) col.enabled = false;
+    }
+
+    // Slides the body along the ground after a hit, bleeding off the impulse.
+    void ApplyKnockback(float dt)
+    {
+        if (knockVelocity.sqrMagnitude < 0.01f) { knockVelocity = Vector3.zero; return; }
+
+        Vector3 step = knockVelocity * dt;
+        if (agent.enabled && agent.isOnNavMesh)
+        {
+            if (NavMesh.SamplePosition(transform.position + step, out NavMeshHit hit, 1.2f, NavMesh.AllAreas))
+                agent.Warp(hit.position);
+        }
+        else transform.position += step;
+
+        knockVelocity = Vector3.MoveTowards(knockVelocity, Vector3.zero, 14f * dt);
     }
 
     void Update()
     {
         if (!player) return;
+
+        if (CurrentState == State.Dying)
+        {
+            float dt = Time.deltaTime;
+            deathTimer -= dt;
+            ApplyKnockback(dt);
+            if (visual) visual.Animate(State.Dying, 0f, 1f);
+            if (deathTimer <= 0f && spawner) spawner.Release(this);
+            return;
+        }
+
+        if (CurrentState == State.Stagger)
+        {
+            float dt = Time.deltaTime;
+            staggerTimer -= dt;
+            ApplyKnockback(dt);
+            if (visual) visual.Animate(State.Stagger, 0f, Aggression);
+            if (staggerTimer > 0f) return;
+
+            // Back on its feet, and it comes back angry.
+            agent.updateRotation = true;
+            if (agent.isOnNavMesh) agent.isStopped = false;
+            CurrentState = State.Aggressive;
+            nextThink = 0f;
+            return;
+        }
 
         if (CurrentState == State.Banished)
         {
@@ -163,7 +250,7 @@ public class VampireAI : MonoBehaviour
         {
             Aggression = 0f;
             EnterState(State.Flee);
-            agent.speed = prayerFleeSpeed;
+            agent.speed = prayerFleeSpeed * SpeedScale;
             SetFleeDestination(prayer.FearRadius + 10f - dist);
             return;
         }
@@ -174,13 +261,13 @@ public class VampireAI : MonoBehaviour
                 if (dist < radius + fleeBuffer)
                 {
                     EnterState(State.Flee);
-                    agent.speed = fleeSpeed;
+                    agent.speed = fleeSpeed * SpeedScale;
                     SetFleeDestination(radius + lurkBuffer + 3f - dist);
                 }
                 else
                 {
                     EnterState(State.Hidden);
-                    agent.speed = dist > engageRange ? driftSpeed : stalkSpeed * 0.8f;
+                    agent.speed = (dist > engageRange ? driftSpeed : stalkSpeed * 0.8f) * SpeedScale;
                     // Watch from the dark just outside your light.
                     MoveToRing(radius + lurkBuffer, 0f);
                 }
@@ -188,14 +275,14 @@ public class VampireAI : MonoBehaviour
 
             case LightBand.Medium:
                 EnterState(State.Stalk);
-                agent.speed = dist < radius * 0.8f ? fleeSpeed * 0.8f : stalkSpeed;
+                agent.speed = (dist < radius * 0.8f ? fleeSpeed * 0.8f : stalkSpeed) * SpeedScale;
                 circleAngle += circleSign * circleSpeed * thinkInterval;
                 MoveToRing(radius + stalkBuffer, circleAngle);
                 break;
 
             default: // Critical or Out
                 EnterState(State.Aggressive);
-                agent.speed = band == LightBand.Out ? darkSpeed : criticalSpeed;
+                agent.speed = (band == LightBand.Out ? darkSpeed : criticalSpeed) * SpeedScale;
                 if (dist <= attackRange && Time.time >= cooldownUntil) BeginAttack();
                 else agent.SetDestination(player.position);
                 break;
@@ -243,15 +330,15 @@ public class VampireAI : MonoBehaviour
 
         bool protectedNow = (prayer && prayer.IsActive) || (playerHealth && playerHealth.IsProtected);
 
-        if (!struck && attackTimer >= windUpTime)
+        if (!struck && attackTimer >= WindUp)
         {
             struck = true;
             if (visual) visual.Strike();
             AudioManager.PlayAt(Sfx.VampireAttack, transform.position + Vector3.up * 1.2f);
-            if (!protectedNow && toPlayer.magnitude <= strikeReach && playerHealth) playerHealth.TakeHit(damage, transform.position);
+            if (!protectedNow && toPlayer.magnitude <= strikeReach && playerHealth) playerHealth.TakeHit(Damage, transform.position);
         }
 
-        if (attackTimer >= windUpTime + 0.45f || (protectedNow && !struck))
+        if (attackTimer >= WindUp + 0.45f || (protectedNow && !struck))
         {
             cooldownUntil = Time.time + attackCooldown;
             agent.isStopped = false;

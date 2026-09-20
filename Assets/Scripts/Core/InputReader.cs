@@ -42,11 +42,12 @@ public class InputReader : MonoBehaviour
     [Range(0.5f, 1f)] public float touchRunThreshold = 0.9f;
 
     InputAction moveAction, interactAction, prayAction, pauseAction, sprintAction,
-                jumpAction, crawlAction, attackAction, toggleCameraAction;
+                jumpAction, crawlAction, attackAction, blockAction, toggleCameraAction;
 
     Vector2 touchMove;
     Vector2 touchLookPixels;
     bool touchInteract, touchPray, touchPause, touchJump, touchCrawl, touchAttack, touchToggleCamera;
+    bool touchBlock;
 
     public Vector2 Move { get; private set; }
     public Vector2 LookDegrees { get; private set; }
@@ -57,6 +58,8 @@ public class InputReader : MonoBehaviour
     public bool JumpPressed { get; private set; }
     public bool CrawlPressed { get; private set; }
     public bool AttackPressed { get; private set; }
+    /// <summary>Held, not tapped: the sword guard stays up for as long as this is true.</summary>
+    public bool BlockHeld { get; private set; }
     public bool ToggleCameraPressed { get; private set; }
     public bool HasLookInput => LookDegrees.sqrMagnitude > 0.0001f;
 
@@ -77,6 +80,7 @@ public class InputReader : MonoBehaviour
         jumpAction = map.FindAction("Jump", true);
         crawlAction = map.FindAction("Crawl", true);
         attackAction = map.FindAction("Attack", true);
+        blockAction = map.FindAction("Block", false);
         toggleCameraAction = map.FindAction("ToggleCamera", true);
     }
 
@@ -92,6 +96,8 @@ public class InputReader : MonoBehaviour
     public void PressTouchJump() => touchJump = true;
     public void PressTouchCrawl() => touchCrawl = true;
     public void PressTouchAttack() => touchAttack = true;
+    /// <summary>On-screen guard button: pushed every frame the finger is down.</summary>
+    public void HoldTouchBlock(bool held) => touchBlock = held;
     public void PressTouchToggleCamera() => touchToggleCamera = true;
 
     void Update()
@@ -107,10 +113,31 @@ public class InputReader : MonoBehaviour
         CrawlPressed = crawlAction.WasPressedThisFrame() || touchCrawl;
         ToggleCameraPressed = toggleCameraAction.WasPressedThisFrame() || touchToggleCamera;
         AttackPressed = touchAttack || (attackAction.WasPressedThisFrame() && !ClickIsForCursor());
+        BlockHeld = touchBlock || ReadBlock();
         touchInteract = touchPray = touchPause = touchJump = touchCrawl = touchAttack = touchToggleCamera = false;
 
         LookDegrees = GameplayLookEnabled ? ReadLook() : Vector2.zero;
         touchLookPixels = Vector2.zero;
+    }
+
+    // Right mouse doubles as free-look drag while the cursor is unlocked, so it only raises the
+    // guard once the cursor is captured. Keyboard and gamepad bindings always count.
+    bool ReadBlock()
+    {
+        if (blockAction == null || !blockAction.enabled) return false;
+        if (!blockAction.IsPressed()) return false;
+        var mouse = Mouse.current;
+        bool onlyMouse = mouse != null && mouse.rightButton.isPressed;
+        if (onlyMouse && Cursor.lockState != CursorLockMode.Locked)
+        {
+            // Was it the mouse alone? If any other bound control is down, guard anyway.
+            var kb = Keyboard.current;
+            var pad = Gamepad.current;
+            bool other = (kb != null && kb.qKey.isPressed) ||
+                         (pad != null && (pad.leftTrigger.isPressed || pad.leftShoulder.isPressed));
+            if (!other) return false;
+        }
+        return true;
     }
 
     // A left click on an unlocked desktop cursor is used to lock the cursor (or press UI), not to swing the sword.

@@ -191,13 +191,12 @@ public static class EmberArt
             float hole = Mathf.Clamp01(inner * 60f) * 0.55f;
             return new Color(1f, 1f, 1f, Mathf.Clamp01(a - hole));
         }, Vector4.zero);
-        // Latin cross icon.
-        SaveSprite(SpriteDir + "/S_Cross.png", 128, (x, y) =>
+        // Om (\u0950). Drawn from arc and stroke distance fields rather than a font glyph so it
+        // stays sharp at any size and needs no Devanagari typeface shipped with the build.
+        SaveSprite(SpriteDir + "/S_Om.png", 512, (x, y) =>
         {
-            float u = (x + 0.5f) / 128f, v = (y + 0.5f) / 128f;
-            bool vertical = Mathf.Abs(u - 0.5f) < 0.07f && v > 0.08f && v < 0.92f;
-            bool horizontal = Mathf.Abs(v - 0.66f) < 0.07f && u > 0.25f && u < 0.75f;
-            return new Color(1f, 1f, 1f, vertical || horizontal ? 1f : 0f);
+            Vector2 p = new Vector2((x + 0.5f) / 512f, (y + 0.5f) / 512f);
+            return new Color(1f, 1f, 1f, OmCoverage(p, 512));
         }, Vector4.zero);
         // Signal bar (rounded).
         SaveSprite(SpriteDir + "/S_Bar.png", 32, (x, y) =>
@@ -219,6 +218,108 @@ public static class EmberArt
         float y = p.y;
         float width = y < 0f ? Mathf.Sqrt(Mathf.Max(0f, r * r - y * y)) : r * Mathf.Pow(Mathf.Max(0f, 1f - y / (0.5f * scale)), 1.4f);
         return width - Mathf.Abs(p.x + Mathf.Sin(y * 9f) * 0.02f * Mathf.Max(0f, y) * 10f);
+    }
+
+    // Builds the material the Om plate uses: unlit, transparent, and emissive so the
+    // glyph keeps its shape in pitch darkness and blooms when the prayer is answered.
+    // The Om plate's material: unlit-transparent and emissive, so the glyph keeps its shape
+    // in pitch darkness and blooms orange when the prayer is answered. PrayerSystem drives
+    // _EmissionColor at runtime; these are the resting values.
+    static void OmMaterial()
+    {
+        var mat = GetOrCreate("OmSymbol", Shader.Find("Universal Render Pipeline/Unlit"));
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(SpriteDir + "/S_Om.png");
+        if (tex) mat.SetTexture("_BaseMap", tex);
+        mat.SetColor("_BaseColor", new Color(1f, 0.62f, 0.22f, 1f));
+        mat.SetFloat("_Cull", 0f);                       // legible from either side
+        MakeTransparent(mat);
+        Emissive(mat, new Color(3.2f, 1.5f, 0.45f));
+        EditorUtility.SetDirty(mat);
+    }
+
+    // ------------------------------------------------------------------ Om glyph
+
+    // Coverage of the Om symbol at normalised point p, antialiased against the pixel size.
+    // The glyph is built from five parts, in the order a hand would draw them:
+    //   1. the upper loop of the "3" (the head of the character)
+    //   2. the larger lower loop beneath it
+    //   3. the tail that sweeps out to the right
+    //   4. the chandra (crescent) floating above
+    //   5. the bindu (dot) resting in the crescent
+    static float OmCoverage(Vector2 p, int size)
+    {
+        // Work in a square space centred on the glyph body, y up.
+        Vector2 q = new Vector2(p.x - 0.45f, p.y - 0.40f);
+        float aa = 1.6f / size;            // ~1.5 px of feather, in normalised units
+        float d = float.MaxValue;
+
+        // 1. upper loop: a near-closed ring, open towards the lower right.
+        d = Mathf.Min(d, ArcDistance(q, new Vector2(-0.050f, 0.100f), 0.083f, 205f, 495f, 0.028f));
+
+        // 2. lower loop: bigger, open at the upper right where it meets the tail.
+        d = Mathf.Min(d, ArcDistance(q, new Vector2(-0.020f, -0.120f), 0.150f, 115f, 425f, 0.034f));
+
+        // 3. the sweeping tail, drawn as a chain of short segments along a curve.
+        d = Mathf.Min(d, TailDistance(q));
+
+        // 4. chandra: a thin crescent, lifted clear of the upper loop so the two never merge.
+        d = Mathf.Min(d, ArcDistance(q, new Vector2(0.080f, 0.300f), 0.068f, 200f, 340f, 0.016f));
+
+        // 5. bindu: the dot cradled by the crescent.
+        d = Mathf.Min(d, Vector2.Distance(q, new Vector2(0.080f, 0.400f)) - 0.028f);
+
+        return Mathf.Clamp01(0.5f - d / aa);
+    }
+
+    // Signed distance to a stroked circular arc: |distance to the arc centreline| - halfWidth.
+    // Angles are degrees, measured counter-clockwise from +X; sweeping past 360 is allowed.
+    static float ArcDistance(Vector2 p, Vector2 centre, float radius, float startDeg, float endDeg, float halfWidth)
+    {
+        Vector2 local = p - centre;
+        float angle = Mathf.Atan2(local.y, local.x) * Mathf.Rad2Deg;
+        // Bring the sample angle into the same turn as the arc's start.
+        while (angle < startDeg) angle += 360f;
+
+        if (angle <= endDeg)
+        {
+            // Inside the sweep: distance is purely radial.
+            return Mathf.Abs(local.magnitude - radius) - halfWidth;
+        }
+
+        // Outside the sweep: the nearest point is whichever end cap is closer.
+        Vector2 a = centre + Polar(startDeg, radius);
+        Vector2 b = centre + Polar(endDeg, radius);
+        return Mathf.Min(Vector2.Distance(p, a), Vector2.Distance(p, b)) - halfWidth;
+    }
+
+    static Vector2 Polar(float degrees, float radius)
+    {
+        float r = degrees * Mathf.Deg2Rad;
+        return new Vector2(Mathf.Cos(r) * radius, Mathf.Sin(r) * radius);
+    }
+
+    // The tail: leaves the lower loop on the right, rises, then flicks out and up.
+    // Sampled as a polyline so the stroke can taper along its length.
+    static float TailDistance(Vector2 p)
+    {
+        Vector2 a = new Vector2(0.085f, -0.050f);   // springs from the lower loop
+        Vector2 b = new Vector2(0.195f, 0.025f);
+        Vector2 c = new Vector2(0.285f, 0.135f);    // the outer flick
+        float best = float.MaxValue;
+
+        const int steps = 24;
+        Vector2 prev = a;
+        for (int i = 1; i <= steps; i++)
+        {
+            float t = i / (float)steps;
+            // Quadratic Bezier through a -> b -> c.
+            float inv = 1f - t;
+            Vector2 cur = inv * inv * a + 2f * inv * t * b + t * t * c;
+            float halfWidth = Mathf.Lerp(0.031f, 0.010f, t);   // tapers to a point
+            best = Mathf.Min(best, SegmentDistance(p, prev, cur) - halfWidth);
+            prev = cur;
+        }
+        return best;
     }
 
     static float SegmentDistance(Vector2 p, Vector2 a, Vector2 b)
@@ -390,6 +491,9 @@ public static class EmberArt
         Emissive(Lit("CandleFlame", new Color(1f, 0.7f, 0.3f), 0.5f, null, Vector2.one), new Color(4f, 2f, 0.6f));
         // The cross uses URP Lit with strong emission so bloom makes it radiate.
         var holy = Lit("HolyLight", new Color(1f, 0.93f, 0.75f), 0.5f, null, Vector2.one);
+        // The Om plate: an alpha-cut, self-lit sheet so the glyph reads as burning light
+        // rather than a painted board. PrayerSystem drives its emission colour at runtime.
+        OmMaterial();
         Emissive(holy, new Color(6f, 4.6f, 2.6f));
 
         // Particles (additive, soft).

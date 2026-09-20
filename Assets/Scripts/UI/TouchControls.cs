@@ -16,6 +16,8 @@ public class TouchControls : MonoBehaviour
     public RectTransform prayGlow;
     public CanvasGroup attackButton;
     public TMP_Text attackLabel;
+    public CanvasGroup blockButton;
+    public RectTransform blockGlow;
     public TMP_Text crawlLabel;
     public PlayerController controller;
 
@@ -41,6 +43,17 @@ public class TouchControls : MonoBehaviour
         // The sword button only exists while a sword is carried.
         bool armed = SwordController.Armed;
         SetGroup(attackButton, armed ? 1f : 0f, armed);
+        SetGroup(blockButton, armed ? 1f : 0f, armed);
+
+        // The guard button lights up while it is actually holding a guard, so the
+        // player can see the stance is live without watching the character.
+        var sword = SwordController.Instance;
+        if (blockGlow)
+        {
+            bool guarding = sword && sword.IsGuarding;
+            blockGlow.gameObject.SetActive(armed && guarding);
+            if (guarding) blockGlow.localScale = Vector3.one * (1f + 0.06f * Mathf.Sin(Time.unscaledTime * 9f));
+        }
 
         bool hasPrayer = prayer && prayer.HasLocket && !prayer.Used;
         bool ready = prayer && prayer.CanPray;

@@ -73,3 +73,13 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# EMBER: local build output (regenerate via EMBER > Build WebGL)
+/WebGLBuild/
+/[Bb]uild/
+
+# Unity Test Framework / Performance Testing run artifacts (must never ship in Resources)
+/[Aa]ssets/[Rr]esources/PerformanceTestRun*.json*
+
+# Crash-recovery scene dumps
+/[Aa]ssets/_Recovery/

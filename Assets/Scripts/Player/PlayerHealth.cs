@@ -36,6 +36,8 @@ public class PlayerHealth : MonoBehaviour
 
     void Awake()
     {
+        // Difficulty decides how much punishment the run allows before it ends.
+        maxHealth *= GameConfig.Current.playerHealthMultiplier;
         Current = maxHealth;
         if (!controller) controller = GetComponent<PlayerController>();
         if (!animator) animator = GetComponentInChildren<PlayerAnimator>();
@@ -50,24 +52,36 @@ public class PlayerHealth : MonoBehaviour
         if (IsDead || IsProtected || Time.time - lastHitTime < invulnerableAfterHit) return false;
         if (GameManager.Instance && !GameManager.Instance.IsGameplayActive) return false;
 
+        // The sword gets first say: a raised guard soaks most of the blow, and a guard raised
+        // in the instant before it lands turns the whole thing aside.
+        bool parried = false;
+        var sword = SwordController.Instance;
+        if (sword) damage = sword.FilterIncomingDamage(damage, fromPosition, out parried);
+
+        // A parry is not a hit: no stagger, no knockback, no invulnerability window to burn.
+        if (parried) return false;
+
         lastHitTime = Time.time;
         Current = Mathf.Max(0f, Current - damage);
+
+        bool blocked = sword && sword.IsGuarding;
+        float reaction = blocked ? 0.45f : 1f;
 
         Vector3 away = transform.position - fromPosition;
         away.y = 0f;
         if (controller)
         {
-            controller.AddImpulse(away.normalized * knockback);
-            controller.LockMovement(stagger);
+            controller.AddImpulse(away.normalized * knockback * reaction);
+            controller.LockMovement(stagger * reaction);
         }
-        if (animator) animator.PlayHit();
-        if (lantern) lantern.Disturb(1f);
+        if (!blocked && animator) animator.PlayHit();
+        if (lantern) lantern.Disturb(reaction);
 
         OnDamaged?.Invoke(damage);
         GameEvents.RaisePlayerDamaged(damage);
-        AudioManager.Play(Sfx.PlayerHurt);
-        Haptics.Pulse(0.8f, 0.25f);
-        CameraController.Shake(0.9f);
+        if (!blocked) AudioManager.Play(Sfx.PlayerHurt);
+        Haptics.Pulse(0.8f * reaction, 0.25f);
+        CameraController.Shake(0.9f * reaction);
 
         if (Current <= 0f) Die();
         return true;

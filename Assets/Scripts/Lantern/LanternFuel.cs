@@ -52,7 +52,9 @@ public class LanternFuel : MonoBehaviour
     {
         if (Depleted || !Draining) return;
 
-        SetFuel(CurrentFuel - drainPerSecond * Time.deltaTime);
+        // Difficulty scales the drain rather than replacing it, so the Inspector value
+        // stays the designer's baseline.
+        SetFuel(CurrentFuel - drainPerSecond * GameConfig.Current.fuelDrainMultiplier * Time.deltaTime);
     }
 
     public void AddFuel(float amount)
@@ -68,6 +70,17 @@ public class LanternFuel : MonoBehaviour
             OnRelit?.Invoke();
             GameEvents.RaiseLanternRelit();
         }
+    }
+
+    /// <summary>
+    /// Spends fuel on something other than the slow drain - the sword's radiant strike burns
+    /// the lantern down to pay for its flash. Goes through the same path as the drain, so the
+    /// light band, warnings and the "lantern out" event all fire exactly as they should.
+    /// </summary>
+    public void Burn(float amount)
+    {
+        if (amount <= 0f || Depleted) return;
+        SetFuel(CurrentFuel - amount);
     }
 
     // Fuel is always clamped, so the HUD can never show a negative or >100% value.

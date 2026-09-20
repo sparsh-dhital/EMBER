@@ -12,6 +12,7 @@ public class HUDController : MonoBehaviour
     public PrayerSystem prayer;
     public PlayerInteractor interactor;
     public PlayerHealth health;
+    public SwordController sword;
     public RadioCentre radioCentre;
     public Transform player;
 
@@ -27,6 +28,12 @@ public class HUDController : MonoBehaviour
     [Header("Mission")]
     public TMP_Text partsText;
     public TMP_Text prayerText;
+
+    [Header("Sword")]
+    public CanvasGroup swordGroup;
+    public TMP_Text swordText;
+    [Tooltip("One pip per slash in the radiant chain.")]
+    public Image[] comboPips;
     public TMP_Text objectiveText;
     public CanvasGroup signalGroup;
     public Image[] signalBars;
@@ -170,8 +177,43 @@ public class HUDController : MonoBehaviour
         UpdatePrayerCountdown(dt);
         UpdatePrompt(dt);
         UpdateCall(dt);
+        UpdateSword(dt);
         UpdateDamage(dt);
     }
+
+    // The sword row: how far through the radiant chain you are, and whether the
+    // lantern still has the fuel to pay for the finisher. Hidden entirely when unarmed.
+    void UpdateSword(float dt)
+    {
+        bool armed = sword && sword.HasSword;
+        if (swordGroup)
+            swordGroup.alpha = Mathf.MoveTowards(swordGroup.alpha, armed ? 1f : 0f, dt * 4f);
+        if (!armed) return;
+
+        bool ready = sword.RadiantReady;
+        if (swordText)
+        {
+            swordText.text = ready ? "RADIANT READY" : "LANTERN TOO LOW";
+            swordText.color = Color.Lerp(swordText.color, ready ? SwordReady : SwordSpent, dt * 6f);
+        }
+
+        if (comboPips == null) return;
+        // ComboCharge is 0..1 across the chain, so scale it back into whole slashes.
+        int lit = Mathf.RoundToInt(sword.ComboCharge * comboPips.Length);
+        for (int i = 0; i < comboPips.Length; i++)
+        {
+            if (!comboPips[i]) continue;
+            bool on = i < lit && ready;
+            Color target = on ? SwordReady : new Color(1f, 1f, 1f, 0.14f);
+            comboPips[i].color = Color.Lerp(comboPips[i].color, target, dt * 12f);
+            // The last pip pulses once the finisher is armed.
+            float pulse = on && i == comboPips.Length - 1 ? 1f + 0.25f * Mathf.Sin(Time.unscaledTime * 10f) : 1f;
+            comboPips[i].transform.localScale = Vector3.one * pulse;
+        }
+    }
+
+    static readonly Color SwordReady = new Color(1f, 0.93f, 0.72f, 0.95f);
+    static readonly Color SwordSpent = new Color(1f, 1f, 1f, 0.28f);
 
     void UpdateFuel(float dt)
     {
@@ -218,7 +260,11 @@ public class HUDController : MonoBehaviour
                 Color h = holy; h.a = 0.6f + 0.4f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 3f));
                 prayerText.color = h;
             }
-            else if (prayer.Used) { prayerText.text = "PRAYER SPENT"; prayerText.color = dim * 0.8f; }
+            else if (prayer.OnCooldown)
+            {
+                prayerText.text = "OM RECHARGING  " + Mathf.CeilToInt(prayer.CooldownLeft) + "s";
+                prayerText.color = dim * 0.9f;
+            }
             else if (prayer.HasLocket) { prayerText.text = "PRAYER READY"; prayerText.color = holy * 0.9f; }
             else { prayerText.text = "PRAYER LOCKED"; prayerText.color = dim * 0.8f; }
         }
@@ -300,14 +346,33 @@ public class HUDController : MonoBehaviour
     void UpdatePrayerCountdown(float dt)
     {
         if (!countdownGroup || !prayer) return;
-        countdownGroup.alpha = Mathf.MoveTowards(countdownGroup.alpha, prayer.IsActive ? 1f : 0f, dt * 2f);
-        if (!prayer.IsActive) return;
-        if (countdownText)
+
+        // The same dial does double duty: it counts the prayer down while it holds, then
+        // fills back up as the Om recharges, so the player can read both from one place.
+        bool showing = prayer.IsActive || prayer.OnCooldown;
+        countdownGroup.alpha = Mathf.MoveTowards(countdownGroup.alpha, showing ? 1f : 0f, dt * 2f);
+        if (!showing) return;
+
+        if (prayer.IsActive)
         {
-            countdownText.text = Mathf.CeilToInt(prayer.TimeLeft).ToString();
-            countdownText.color = prayer.TimeLeft < prayer.warningAt ? Color.Lerp(danger, holy, Mathf.Abs(Mathf.Sin(Time.unscaledTime * 4f))) : holy;
+            if (countdownText)
+            {
+                countdownText.text = Mathf.CeilToInt(prayer.TimeLeft).ToString();
+                countdownText.color = prayer.TimeLeft < GameConfig.PrayerWarningSeconds
+                    ? Color.Lerp(danger, holy, Mathf.Abs(Mathf.Sin(Time.unscaledTime * 4f)))
+                    : holy;
+            }
+            if (countdownRing) countdownRing.fillAmount = prayer.TimeLeft / GameConfig.PrayerDurationSeconds;
         }
-        if (countdownRing) countdownRing.fillAmount = prayer.TimeLeft / prayer.duration;
+        else
+        {
+            if (countdownText)
+            {
+                countdownText.text = Mathf.CeilToInt(prayer.CooldownLeft).ToString();
+                countdownText.color = dim;
+            }
+            if (countdownRing) countdownRing.fillAmount = prayer.CooldownFraction;
+        }
     }
 
     void UpdatePrompt(float dt)

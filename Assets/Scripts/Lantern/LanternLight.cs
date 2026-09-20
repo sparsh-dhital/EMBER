@@ -51,7 +51,11 @@ public class LanternLight : MonoBehaviour
     float disturb;
     bool isOut;
     float noiseSeed;
-    MaterialPropertyBlock mpb;
+    // Lazily created rather than built in Awake: a domain reload (recompiling while play
+    // mode is running) clears non-serialized fields without calling Awake again, which
+    // used to leave this null and throw once per renderer per frame.
+    MaterialPropertyBlock mpbCache;
+    MaterialPropertyBlock mpb => mpbCache ??= new MaterialPropertyBlock();
     static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
 
@@ -62,7 +66,6 @@ public class LanternLight : MonoBehaviour
 
     void Awake()
     {
-        mpb = new MaterialPropertyBlock();
         noiseSeed = Random.value * 100f;
         if (flame) flameBaseScale = flame.localScale;
         if (!fuel) fuel = GetComponentInParent<LanternFuel>();

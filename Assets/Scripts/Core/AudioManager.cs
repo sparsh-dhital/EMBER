@@ -13,7 +13,9 @@ public enum Sfx
     // Added in the refinement pass. Always append: the values are saved in the scene.
     FootstepDirt, FootstepLeaves, FootstepWood, FootstepStone, CrawlRustle, Jump, Land,
     SwordPickup, SwordSwing, SwordHit, SwordBreak, VampireStagger, VampireDeath, LethalStrike,
-    AmbientDistant, UiHover, Opening
+    AmbientDistant, UiHover, Opening,
+    // Repair-puzzle interface.
+    PuzzleOpen, PuzzleClose, PuzzleClick, PuzzleTone, PuzzleSolved, PuzzleFail, PuzzleHint
 }
 
 [Serializable]
@@ -208,6 +210,21 @@ public class AudioManager : MonoBehaviour
         src.volume = e.volume * volume * instance.masterVolume;
         src.clip = e.clips[UnityEngine.Random.Range(0, e.clips.Length)];
         src.Play();
+    }
+
+    /// <summary>
+    /// Plays one specific clip of a multi-variant entry rather than a random one. The tone
+    /// puzzle needs key 3 to always sound like key 3, which Play's random pick cannot give.
+    /// </summary>
+    public static void PlayVariant(Sfx id, int variant, float volume = 1f, float pitch = 1f)
+    {
+        if (!instance) return;
+        var e = instance.Find(id);
+        if (e == null) return;
+        var src = instance.oneShot2D;
+        src.pitch = pitch;
+        src.PlayOneShot(e.clips[Mathf.Clamp(variant, 0, e.clips.Length - 1)],
+                        e.volume * volume * instance.masterVolume);
     }
 
     public static AudioClip GetClip(Sfx id)

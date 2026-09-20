@@ -23,6 +23,8 @@ public static class EmberCharacterBuilder
     public class PlayerParts
     {
         public Transform model, cameraTarget, lanternRoot, flameGroup, crossRoot;
+        public Transform swordRoot;
+        public Renderer[] bladeRenderers;
         public Animator animator;
         public Light lanternLight, holyLight;
         public Renderer flameRenderer, glassRenderer;
@@ -73,8 +75,9 @@ public static class EmberCharacterBuilder
         Part("Beanie", PrimitiveType.Sphere, head, new Vector3(0f, 0.165f, -0.005f), new Vector3(0.225f, 0.17f, 0.235f), beanie);
         Part("BeanieRim", PrimitiveType.Cylinder, head, new Vector3(0f, 0.14f, 0f), new Vector3(0.23f, 0.025f, 0.24f), beanie);
 
+        // Left hand carries the lantern, right hand carries the sword.
         Transform handR = BuildArm("R", chest, 1f, coat, skin);
-        BuildArm("L", chest, -1f, coat, skin);
+        Transform handL = BuildArm("L", chest, -1f, coat, skin);
         BuildLeg("L", hips, -1f, pants, boots);
         BuildLeg("R", hips, 1f, pants, boots);
 
@@ -83,7 +86,8 @@ public static class EmberCharacterBuilder
         p.animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
         p.animator.runtimeAnimatorController = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
 
-        BuildLantern(p, handR, player.transform);
+        BuildLantern(p, handL, player.transform);
+        BuildSword(p, handR);
 
         p.cameraTarget = Bone("CameraTarget", player.transform, new Vector3(0f, 1.55f, 0f));
         BuildPrayerVisuals(p, player.transform);
@@ -113,6 +117,48 @@ public static class EmberCharacterBuilder
         Part("BootShaft", PrimitiveType.Cylinder, lower, new Vector3(0f, -0.35f, 0f), new Vector3(0.135f, 0.08f, 0.135f), boots);
         var foot = Bone("Foot" + side, lower, new Vector3(0f, -0.43f, 0f));
         Part("Boot", PrimitiveType.Cube, foot, new Vector3(0f, -0.01f, 0.05f), new Vector3(0.12f, 0.085f, 0.26f), boots);
+    }
+
+    // ------------------------------------------------------------------ sword
+
+    // The sacred silver sword: a cruciform hilt, a fullered blade, and a silver edge
+    // bright enough to read against the dark. Emission is driven at runtime by
+    // SwordController, which flares it on a radiant strike and on a parry.
+    static void BuildSword(PlayerParts p, Transform hand)
+    {
+        Material steel = EmberArt.Load("Metal"), grip = EmberArt.Load("WoodDark"),
+                 gold = EmberArt.Load("Gold"), silver = EmberArt.Load("LanternMetal");
+
+        // Held point-down-forward in a relaxed grip; the swing animation does the rest.
+        var root = Bone("Sword", hand, new Vector3(0f, -0.06f, 0.03f));
+        root.localRotation = Quaternion.Euler(-8f, 0f, 0f);
+        p.swordRoot = root;
+
+        // Grip and pommel.
+        NoShadow(Part("Grip", PrimitiveType.Cylinder, root, new Vector3(0f, -0.02f, 0f), new Vector3(0.022f, 0.06f, 0.022f), grip));
+        NoShadow(Part("Pommel", PrimitiveType.Sphere, root, new Vector3(0f, -0.09f, 0f), new Vector3(0.042f, 0.042f, 0.042f), gold));
+
+        // Cruciform guard: this is a holy weapon, and the silhouette should say so.
+        NoShadow(Part("Guard", PrimitiveType.Cube, root, new Vector3(0f, 0.05f, 0f), new Vector3(0.2f, 0.022f, 0.032f), gold));
+        NoShadow(Part("GuardBoss", PrimitiveType.Cube, root, new Vector3(0f, 0.05f, 0f), new Vector3(0.05f, 0.05f, 0.042f), gold));
+
+        // Blade: a broad core with a bright silver edge laid over it.
+        var blade = Part("Blade", PrimitiveType.Cube, root, new Vector3(0f, 0.46f, 0f), new Vector3(0.05f, 0.82f, 0.016f), steel);
+        var edge = Part("BladeEdge", PrimitiveType.Cube, root, new Vector3(0f, 0.46f, 0f), new Vector3(0.056f, 0.8f, 0.007f), silver);
+        // A diamond point: the same cube turned 45 degrees on its face.
+        var tip = Part("BladeTip", PrimitiveType.Cube, root, new Vector3(0f, 0.9f, 0f),
+                       new Vector3(0.036f, 0.036f, 0.016f), steel, new Vector3(0f, 0f, 45f));
+        NoShadow(tip);
+        // A thin fuller down the centre, so the blade catches the lantern rather than reading flat.
+        NoShadow(Part("Fuller", PrimitiveType.Cube, root, new Vector3(0f, 0.46f, 0f), new Vector3(0.014f, 0.76f, 0.019f), gold));
+
+        p.bladeRenderers = new[]
+        {
+            blade.GetComponent<Renderer>(),
+            edge.GetComponent<Renderer>(),
+            tip.GetComponent<Renderer>(),
+        };
+        NoShadow(edge);
     }
 
     // ------------------------------------------------------------------ lantern
@@ -181,37 +227,48 @@ public static class EmberCharacterBuilder
 
     static void BuildPrayerVisuals(PlayerParts p, Transform player)
     {
-        var holy = EmberArt.Load("HolyLight");
-        var cross = Bone("PrayerCross", player, new Vector3(0f, 2.55f, 0f));
-        p.crossRoot = cross;
-        var v = Part("Upright", PrimitiveType.Cube, cross, new Vector3(0f, 0f, 0f), new Vector3(0.085f, 0.9f, 0.05f), holy);
-        var h = Part("Crossbeam", PrimitiveType.Cube, cross, new Vector3(0f, 0.19f, 0f), new Vector3(0.52f, 0.085f, 0.05f), holy);
-        NoShadow(v); NoShadow(h);
-        p.crossRenderers = new[] { v.GetComponent<Renderer>(), h.GetComponent<Renderer>() };
-        EmberFX.GlowSprite(cross, new Vector3(0f, 0.05f, 0.05f), new Color(1f, 0.85f, 0.55f, 0.45f), 2.6f);
-        EmberFX.GlowSprite(cross, new Vector3(0f, 0.05f, 0.06f), new Color(1f, 0.95f, 0.8f, 0.5f), 1.1f);
-        var halo = EmberFX.Motes(cross, Vector3.zero, new Color(1f, 0.9f, 0.6f), 10f, 0.5f, 0.035f, 30, "CrossMotes");
-        var hm = halo.main; hm.playOnAwake = true;
+        // The prayer sign is the Hindu Om. It is a single alpha-cut plate rather than built
+        // geometry, so the glyph stays perfectly formed at any distance, and it always faces
+        // the camera (PrayerSystem billboards crossRoot each frame).
+        var omMat = EmberArt.Load("OmSymbol");
+        var om = Bone("PrayerOm", player, new Vector3(0f, 2.55f, 0f));
+        p.crossRoot = om;
+
+        var plate = Part("OmPlate", PrimitiveType.Quad, om, Vector3.zero, new Vector3(1.05f, 1.05f, 1f), omMat);
+        NoShadow(plate);
+        p.crossRenderers = new[] { plate.GetComponent<Renderer>() };
+
+        // Orange flame-light behind the glyph: a warm outer bloom, a hot inner core.
+        EmberFX.GlowSprite(om, new Vector3(0f, 0.02f, 0.06f), new Color(1f, 0.46f, 0.12f, 0.55f), 2.9f);
+        EmberFX.GlowSprite(om, new Vector3(0f, 0.02f, 0.07f), new Color(1f, 0.74f, 0.32f, 0.5f), 1.4f);
+
+        // Embers lifting off the symbol, so it reads as burning rather than printed.
+        var halo = EmberFX.Motes(om, Vector3.zero, new Color(1f, 0.55f, 0.16f), 12f, 0.6f, 0.04f, 36, "OmEmbers");
+        var hm = halo.main;
+        hm.playOnAwake = true;
+        hm.startLifetime = new ParticleSystem.MinMaxCurve(0.7f, 1.5f);
+        hm.startSpeed = new ParticleSystem.MinMaxCurve(0.25f, 0.7f);
+        hm.gravityModifier = -0.12f;      // embers rise
 
         var lightGo = new GameObject("HolyLight");
         lightGo.transform.SetParent(player, false);
         lightGo.transform.localPosition = new Vector3(0f, 2.3f, 0f);
         var light = lightGo.AddComponent<Light>();
         light.type = LightType.Point;
-        light.color = new Color(1f, 0.86f, 0.62f);
+        light.color = new Color(1f, 0.58f, 0.22f);   // firelight, not moonlight
         light.range = 17f;
         light.intensity = 0f;
         light.shadows = LightShadows.None;
         light.enabled = false;
         p.holyLight = light;
 
-        p.prayerMotes = EmberFX.Motes(player, new Vector3(0f, 0.2f, 0f), new Color(1f, 0.85f, 0.5f), 22f, 3f, 0.06f, 110, "PrayerMotes");
+        p.prayerMotes = EmberFX.Motes(player, new Vector3(0f, 0.2f, 0f), new Color(1f, 0.6f, 0.2f), 22f, 3f, 0.06f, 110, "PrayerMotes");
         var pm = p.prayerMotes.main;
         pm.startLifetime = new ParticleSystem.MinMaxCurve(2.5f, 4f);
         pm.startSpeed = new ParticleSystem.MinMaxCurve(0.3f, 0.8f);
         var sh = p.prayerMotes.shape; sh.shapeType = ParticleSystemShapeType.Circle; sh.rotation = new Vector3(-90f, 0f, 0f); sh.radius = 3f;
 
-        p.prayerRing = EmberFX.Ring(player, new Vector3(0f, 0.08f, 0f), new Color(1f, 0.85f, 0.5f, 0.9f), 34f, 1.6f, "PrayerRing");
+        p.prayerRing = EmberFX.Ring(player, new Vector3(0f, 0.08f, 0f), new Color(1f, 0.6f, 0.2f, 0.9f), 34f, 1.6f, "PrayerRing");
     }
 
     // ------------------------------------------------------------------ helpers
@@ -329,11 +386,12 @@ public static class EmberCharacterBuilder
             [SP] = new Vector3(2f + breathe, 0f, 0f),
             [CH] = new Vector3(1.5f * breathe, 0f, 0f),
             [NK] = new Vector3(3f, 0f, 0f),
-            [UAL] = new Vector3(4f + breathe, 0f, -7f),
-            [FAL] = new Vector3(-12f, 0f, 0f),
-            [UAR] = new Vector3(-18f + breathe, 0f, 12f),
-            [FAR] = new Vector3(-36f, 0f, 0f),
-            [HAR] = new Vector3(12f, 0f, 0f),
+            // Left arm holds the lantern out and steady; right arm hangs ready on the hilt.
+            [UAL] = new Vector3(-18f + breathe, 0f, -12f),
+            [FAL] = new Vector3(-36f, 0f, 0f),
+            [HAL] = new Vector3(12f, 0f, 0f),
+            [UAR] = new Vector3(4f + breathe, 0f, 7f),
+            [FAR] = new Vector3(-12f, 0f, 0f),
             [ULL] = new Vector3(2f, 0f, -2f),
             [LLL] = new Vector3(4f, 0f, 0f),
             [FTL] = new Vector3(-5f, 0f, 0f),
@@ -356,9 +414,10 @@ public static class EmberCharacterBuilder
         return p;
     }
 
+    // The lantern arm. It lives on the left side now, so the roll angle mirrors.
     static Pose LanternArm(float x = -20f, float fore = -38f, float hand = 10f, float z = 12f)
     {
-        return new Pose { [UAR] = new Vector3(x, 0f, z), [FAR] = new Vector3(fore, 0f, 0f), [HAR] = new Vector3(hand, 0f, 0f) };
+        return new Pose { [UAL] = new Vector3(x, 0f, -z), [FAL] = new Vector3(fore, 0f, 0f), [HAL] = new Vector3(hand, 0f, 0f) };
     }
 
     static Pose CrawlBase(float breathe)
@@ -615,12 +674,14 @@ public static class EmberCharacterBuilder
             return (pose, 0.8f);
         });
 
-        // ---------------- sword swing (left hand), upper body only: anticipation, strike, follow-through, recovery
+        // ---------------- sword swing (right hand), upper body only: anticipation, strike, follow-through, recovery
+        // The keyframes below were authored for a left-handed swing; mirroring the yaw and roll
+        // here flips the whole motion onto the sword arm without retuning a single number.
         var atkB = new ClipBuilder();
-        Pose Swing(Vector3 armL, float foreL, float spineY, float spineX, float chestY) => Merge(IdlePose(), new Pose
+        Pose Swing(Vector3 arm, float fore, float spineY, float spineX, float chestY) => Merge(IdlePose(), new Pose
         {
-            [SP] = new Vector3(spineX, spineY, 0f), [CH] = new Vector3(2f, chestY, 0f), [NK] = new Vector3(0f, -(spineY + chestY) * 0.7f, 0f),
-            [UAL] = armL, [FAL] = new Vector3(foreL, 0f, 0f), [HAL] = new Vector3(-10f, 0f, 0f),
+            [SP] = new Vector3(spineX, -spineY, 0f), [CH] = new Vector3(2f, -chestY, 0f), [NK] = new Vector3(0f, (spineY + chestY) * 0.7f, 0f),
+            [UAR] = new Vector3(arm.x, -arm.y, -arm.z), [FAR] = new Vector3(fore, 0f, 0f), [HAR] = new Vector3(-10f, 0f, 0f),
         });
         atkB.Key(0f, Swing(new Vector3(4f, 0f, -7f), -16f, 0f, 2f, 0f), 0.98f);
         atkB.Key(0.2f, Swing(new Vector3(-128f, 20f, -50f), -62f, 26f, -4f, 10f), 0.97f);
@@ -629,11 +690,24 @@ public static class EmberCharacterBuilder
         atkB.Key(AttackLength, Swing(new Vector3(4f, 0f, -7f), -16f, 0f, 2f, 0f), 0.98f);
         var attack = atkB.Build("Attack", false);
 
+        // ---------------- guard: sword brought up across the body, lantern tucked in close.
+        // A short loop rather than a still frame, so the block breathes under pressure.
+        var guardB = new ClipBuilder();
+        Pose Guard(float b) => Merge(IdlePose(b), Merge(new Pose
+        {
+            [SP] = new Vector3(6f + b, -14f, 0f), [CH] = new Vector3(4f, -10f, 0f), [NK] = new Vector3(6f, 12f, 0f),
+            [UAR] = new Vector3(-74f - b * 2f, -26f, -38f), [FAR] = new Vector3(-96f, 0f, 0f), [HAR] = new Vector3(-16f, 0f, 0f),
+        }, LanternArm(-48f - b, -72f, 14f, 26f)));
+        guardB.Key(0f, Guard(0f), 0.97f);
+        guardB.Key(0.6f, Guard(2.5f), 0.965f);
+        guardB.Key(1.2f, Guard(0f), 0.97f);
+        var guard = guardB.Build("Guard", true);
+
         // ================= controller
         if (AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath)) AssetDatabase.DeleteAsset(ControllerPath);
         var ctrl = AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
         foreach (var f in new[] { "Speed", "MoveMul", "VerticalSpeed" }) ctrl.AddParameter(f, AnimatorControllerParameterType.Float);
-        foreach (var b in new[] { "Grounded", "Crawl", "Dead", "Pray", "Work" }) ctrl.AddParameter(b, AnimatorControllerParameterType.Bool);
+        foreach (var b in new[] { "Grounded", "Crawl", "Dead", "Pray", "Work", "Guard" }) ctrl.AddParameter(b, AnimatorControllerParameterType.Bool);
         foreach (var t in new[] { "Jump", "Land", "Hit", "Attack" }) ctrl.AddParameter(t, AnimatorControllerParameterType.Trigger);
         var parameters = ctrl.parameters;
         foreach (var prm in parameters)
@@ -742,9 +816,22 @@ public static class EmberCharacterBuilder
         var attackDone = sAttack.AddTransition(empty);
         attackDone.hasExitTime = true; attackDone.exitTime = 1f; attackDone.duration = 0.05f;
 
+        // Guard is held, so it is a bool with no exit time: up while the button is down.
+        var sGuard = upperMachine.AddState("Guard"); sGuard.motion = guard;
+        var toGuard = empty.AddTransition(sGuard);
+        toGuard.AddCondition(AnimatorConditionMode.If, 0f, "Guard");
+        toGuard.duration = 0.12f; toGuard.hasExitTime = false;
+        var guardDone = sGuard.AddTransition(empty);
+        guardDone.AddCondition(AnimatorConditionMode.IfNot, 0f, "Guard");
+        guardDone.duration = 0.18f; guardDone.hasExitTime = false;
+        // A swing always beats a guard, so the attack trigger can interrupt it.
+        var guardToAttack = sGuard.AddTransition(sAttack);
+        guardToAttack.AddCondition(AnimatorConditionMode.If, 0f, "Attack");
+        guardToAttack.duration = 0.05f; guardToAttack.hasExitTime = false;
+
         EditorUtility.SetDirty(ctrl);
         AssetDatabase.SaveAssets();
-        Debug.Log("EMBER: player animator built (locomotion, jump, crawl, attack layer).");
+        Debug.Log("EMBER: player animator built (locomotion, jump, crawl, attack + guard layer).");
         return ctrl;
     }
 

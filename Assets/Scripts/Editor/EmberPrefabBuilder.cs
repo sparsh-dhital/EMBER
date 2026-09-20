@@ -50,6 +50,9 @@ public static class EmberPrefabBuilder
 
         var anim = root.AddComponent<VampireAnimator>();
         var ai = root.AddComponent<VampireAI>();
+        // What the silver sword damages. VampireAI drives the reactions it asks for.
+        var health = root.AddComponent<VampireHealth>();
+        health.visual = anim;
         ai.visual = anim;
 
         var model = Bone("Model", root.transform, Vector3.zero);
@@ -207,8 +210,11 @@ public static class EmberPrefabBuilder
 
         var visual = Bone("Visual", root.transform, new Vector3(0f, 0.18f, 0f));
         Part("Pendant", PrimitiveType.Sphere, visual, Vector3.zero, new Vector3(0.1f, 0.13f, 0.035f), gold);
-        Part("CrossV", PrimitiveType.Cube, visual, new Vector3(0f, 0.005f, 0.018f), new Vector3(0.012f, 0.06f, 0.008f), gold);
-        Part("CrossH", PrimitiveType.Cube, visual, new Vector3(0f, 0.017f, 0.018f), new Vector3(0.036f, 0.012f, 0.008f), gold);
+        // The locket is what unlocks prayer, so it carries the same Om the prayer answers to.
+        // A single alpha-cut plate keeps the glyph crisp at locket scale.
+        var omFace = Part("OmFace", PrimitiveType.Quad, visual, new Vector3(0f, 0.014f, 0.0205f),
+                          new Vector3(0.055f, 0.055f, 1f), EmberArt.Load("OmSymbol"));
+        omFace.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         Part("Bail", PrimitiveType.Cylinder, visual, new Vector3(0f, 0.075f, 0f), new Vector3(0.02f, 0.008f, 0.02f), gold, new Vector3(90f, 0f, 0f));
         for (int i = 0; i < 6; i++)
         {

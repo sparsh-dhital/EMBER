@@ -49,7 +49,7 @@ public class FuelPickup : MonoBehaviour
         if (fuel == null) return;
         if (GameManager.Instance && !GameManager.Instance.IsGameplayActive) return;
 
-        fuel.AddFuel(fuelAmount);
+        fuel.AddFuel(fuelAmount * GameConfig.Current.fuelPickupMultiplier);
         Haptics.Pulse(0.3f, 0.08f);
 
         if (pickupBurst)

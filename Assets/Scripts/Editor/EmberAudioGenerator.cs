@@ -21,6 +21,11 @@ public static class EmberAudioGenerator
         rng = new System.Random(7);
 
         for (int i = 0; i < 4; i++) Save(SfxDir, "footstep_" + i, Footstep(i));
+        // Surface-dependent foley: the same gait over four different grounds.
+        for (int i = 0; i < 3; i++) Save(SfxDir, "footstep_dirt_" + i, Surfaced(i, 90f, 0.06f, 0.55f, 0.30f));
+        for (int i = 0; i < 3; i++) Save(SfxDir, "footstep_leaves_" + i, Surfaced(i, 150f, 0.02f, 0.18f, 1.00f));
+        for (int i = 0; i < 3; i++) Save(SfxDir, "footstep_wood_" + i, Surfaced(i, 190f, 0.16f, 0.85f, 0.22f));
+        for (int i = 0; i < 3; i++) Save(SfxDir, "footstep_stone_" + i, Surfaced(i, 240f, 0.09f, 0.45f, 0.50f));
         Save(SfxDir, "fuel_pickup", FuelPickup());
         Save(SfxDir, "radio_pickup", RadioPickup());
         Save(SfxDir, "locket_pickup", LocketPickup());
@@ -42,6 +47,22 @@ public static class EmberAudioGenerator
         Save(SfxDir, "radio_signal", RadioSignal());
         Save(SfxDir, "radio_voice", RadioVoice());
         Save(SfxDir, "flare", Flare());
+        // Sword combat.
+        for (int i = 0; i < 3; i++) Save(SfxDir, "sword_swing_" + i, SwordSwing(i));
+        for (int i = 0; i < 3; i++) Save(SfxDir, "sword_hit_" + i, SwordHit(i));
+        Save(SfxDir, "sword_parry", Parry());
+        Save(SfxDir, "sword_pickup", SwordPickup());
+        Save(SfxDir, "lethal_strike", LethalStrike());
+        for (int i = 0; i < 2; i++) Save(SfxDir, "vampire_stagger_" + i, VampireStagger(i));
+        Save(SfxDir, "vampire_death", VampireDeath());
+        // Repair-puzzle interface: bakelite switchgear, not glassy modern UI.
+        Save(SfxDir, "puzzle_open", PuzzleOpen());
+        Save(SfxDir, "puzzle_close", PuzzleClose());
+        for (int i = 0; i < 3; i++) Save(SfxDir, "puzzle_click_" + i, PuzzleClick(i));
+        for (int i = 0; i < 5; i++) Save(SfxDir, "puzzle_tone_" + i, PuzzleTone(i));
+        Save(SfxDir, "puzzle_solved", PuzzleSolved());
+        Save(SfxDir, "puzzle_fail", PuzzleFail());
+        Save(SfxDir, "puzzle_hint", PuzzleHint());
         Save(SfxDir, "victory", Victory());
         Save(SfxDir, "defeat", Defeat());
         Save(SfxDir, "heartbeat", Heartbeat());
@@ -527,6 +548,342 @@ public static class EmberAudioGenerator
     }
 
     // ------------------------------------------------------------------ DSP helpers
+
+    // ------------------------------------------------------------------ foley: surfaces
+
+    // One footstep over a named surface. The four numbers are what actually separates
+    // gravel from a rotten floorboard: body pitch, how much it rings, how long it rings,
+    // and how much dry crunch rides on top.
+    static float[] Surfaced(int v, float bodyFreq, float resonance, float ring, float crunch)
+    {
+        int n = S(0.3f);
+        var o = new float[n];
+        float lp = 0f, hp = 0f, prev = 0f, low = 0f, band = 0f;
+        float jitter = 0.9f + 0.2f * (float)rng.NextDouble();
+        bodyFreq *= jitter;
+
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float noise = N();
+
+            // Dry scatter: grit, leaf litter, grains of stone.
+            hp = 0.92f * (hp + noise - prev); prev = noise;
+            float scatter = hp * Env(t, 0.001f, 0.035f + 0.05f * crunch) * crunch;
+
+            // The body of the step: a short pitched thump that dies away.
+            float thump = Mathf.Sin(Ph(bodyFreq, t) * (1f - t * 0.6f)) * Env(t, 0.002f, 0.05f);
+
+            // The surface ringing back: boards boom, stone taps, soil does neither.
+            Bandpass(ref low, ref band, noise * 0.5f, bodyFreq * 4.5f, 2.5f + resonance * 14f);
+            float tone = band * resonance * Env(t, 0.003f, ring * 0.12f);
+
+            lp += (noise - lp) * 0.07f;
+            o[i] = thump * 0.6f + scatter * 0.5f + tone * 1.4f + lp * 0.5f * Env(t, 0.002f, 0.05f);
+        }
+        return Norm(o, 0.72f);
+    }
+
+    // ------------------------------------------------------------------ foley: the sword
+
+    // Air torn by a blade: a noise band that sweeps up as the sword accelerates, then past you.
+    static float[] SwordSwing(int v)
+    {
+        int n = S(0.42f);
+        var o = new float[n];
+        float low = 0f, band = 0f;
+        float peak = 1600f + v * 350f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float u = Mathf.Clamp01(t / 0.24f);
+            // Doppler-ish sweep: rises into the strike, drops away after it.
+            float freq = Mathf.Lerp(420f, peak, Mathf.Sin(u * Mathf.PI));
+            Bandpass(ref low, ref band, N(), freq, 3.2f);
+            float whoosh = band * Mathf.Sin(u * Mathf.PI) * Env(t, 0.03f, 0.13f);
+            // A faint metallic edge so it reads as steel, not just wind.
+            float edge = Mathf.Sin(Ph(2950f + v * 120f, t)) * Env(t - 0.1f, 0.004f, 0.05f) * 0.12f;
+            o[i] = whoosh * 1.9f + edge;
+        }
+        return Norm(o, 0.68f);
+    }
+
+    // Silver into a vampire: a wet cut, a low body impact, and the sear of holy light.
+    static float[] SwordHit(int v)
+    {
+        int n = S(0.55f);
+        var o = new float[n];
+        float low = 0f, band = 0f, lp = 0f, hp = 0f, prev = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float noise = N();
+
+            // The cut: a fast burst of filtered noise.
+            Bandpass(ref low, ref band, noise, 900f + v * 160f, 1.6f);
+            float cut = band * Env(t, 0.001f, 0.055f) * 1.8f;
+
+            // The body behind it.
+            lp += (noise - lp) * 0.05f;
+            float thud = (lp * 1.4f + Mathf.Sin(Ph(78f, t) * (1f - t))) * Env(t, 0.002f, 0.085f);
+
+            // Searing: bright hiss that outlasts the impact, like water on a hot plate.
+            hp = 0.95f * (hp + noise - prev); prev = noise;
+            float sear = hp * Env(t - 0.02f, 0.01f, 0.2f) * 0.45f;
+
+            o[i] = cut * 0.7f + thud * 0.8f + sear;
+        }
+        return Norm(o, 0.85f);
+    }
+
+    // Parry: two edges clashing. Bright inharmonic partials with a spark of noise.
+    static float[] Parry()
+    {
+        int n = S(0.75f);
+        var o = new float[n];
+        float hp = 0f, prev = 0f;
+        // Deliberately non-integer ratios: metal rings, it does not sing a chord.
+        float[] partials = { 1860f, 2790f, 3610f, 5230f, 7040f };
+        float[] decays = { 0.28f, 0.2f, 0.14f, 0.09f, 0.05f };
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float ring = 0f;
+            for (int k = 0; k < partials.Length; k++)
+                ring += Mathf.Sin(Ph(partials[k], t)) * Env(t, 0.0008f, decays[k]) / (k + 1.6f);
+
+            float noise = N();
+            hp = 0.96f * (hp + noise - prev); prev = noise;
+            float spark = hp * Env(t, 0.0005f, 0.02f) * 0.8f;
+
+            o[i] = ring * 1.3f + spark;
+        }
+        return Norm(o, 0.88f);
+    }
+
+    // Drawing the sword: the long metallic scrape of steel leaving a scabbard, then a ring.
+    static float[] SwordPickup()
+    {
+        int n = S(1.1f);
+        var o = new float[n];
+        float low = 0f, band = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float draw = Mathf.Clamp01(t / 0.32f);
+            Bandpass(ref low, ref band, N(), Mathf.Lerp(1400f, 5200f, draw), 4f);
+            float scrape = band * Env(t, 0.02f, 0.14f) * 1.6f;
+            float ring = (Mathf.Sin(Ph(2340f, t)) * 0.6f + Mathf.Sin(Ph(3510f, t)) * 0.3f)
+                         * Env(t - 0.3f, 0.005f, 0.42f);
+            o[i] = scrape * 0.7f + ring * 0.7f;
+        }
+        return Norm(o, 0.8f);
+    }
+
+    // The killing blow: the cut, then a bloom of holy light swallowing the shriek.
+    static float[] LethalStrike()
+    {
+        int n = S(1.4f);
+        var o = new float[n];
+        float low = 0f, band = 0f, hp = 0f, prev = 0f;
+        float[] chord = { 523.25f, 659.25f, 783.99f, 1046.5f };
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float noise = N();
+
+            Bandpass(ref low, ref band, noise, 700f, 1.4f);
+            float cut = band * Env(t, 0.001f, 0.07f) * 2f;
+
+            // Rising choral shimmer: the light taking it.
+            float bloom = 0f;
+            for (int k = 0; k < chord.Length; k++)
+                bloom += Mathf.Sin(Ph(chord[k], t) + Mathf.Sin(t * 5f) * 0.3f);
+            bloom *= Env(t - 0.06f, 0.09f, 0.45f) * 0.22f;
+
+            hp = 0.95f * (hp + noise - prev); prev = noise;
+            float ash = hp * Env(t - 0.12f, 0.06f, 0.5f) * 0.3f;
+
+            o[i] = cut * 0.6f + bloom + ash;
+        }
+        return Norm(o, 0.9f);
+    }
+
+    // Knocked off balance: a wet, breath-torn grunt, no pitch to speak of.
+    static float[] VampireStagger(int v)
+    {
+        int n = S(0.7f);
+        var o = new float[n];
+        float low = 0f, band = 0f, lp = 0f;
+        float baseF = 118f - v * 16f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float noise = N();
+            // Growl body, sagging in pitch as the breath goes out of it.
+            float f = baseF * (1f - t * 0.35f);
+            float growl = Mathf.Sin(Ph(f, t)) + 0.5f * Mathf.Sin(Ph(f * 2.03f, t)) + 0.3f * Mathf.Sin(Ph(f * 3.11f, t));
+            growl *= Env(t, 0.012f, 0.16f);
+
+            Bandpass(ref low, ref band, noise, 1150f, 2f);
+            float rasp = band * Env(t, 0.02f, 0.2f) * 0.55f;
+
+            lp += (noise - lp) * 0.03f;
+            o[i] = growl * 0.7f + rasp + lp * 0.3f * Env(t, 0.03f, 0.22f);
+        }
+        return Norm(o, 0.82f);
+    }
+
+    // Burning to ash: a shriek collapsing into a long dry hiss that simply runs out.
+    static float[] VampireDeath()
+    {
+        int n = S(1.9f);
+        var o = new float[n];
+        float low = 0f, band = 0f, hp = 0f, prev = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float noise = N();
+
+            // Shriek: falls away over the first third of a second.
+            float f = Mathf.Lerp(1250f, 210f, Mathf.Clamp01(t / 0.34f));
+            float shriek = (Mathf.Sin(Ph(f, t)) + 0.4f * Mathf.Sin(Ph(f * 1.97f, t)))
+                           * Env(t, 0.006f, 0.15f);
+
+            // The hiss of a body coming apart, fading to nothing.
+            hp = 0.96f * (hp + noise - prev); prev = noise;
+            Bandpass(ref low, ref band, hp, Mathf.Lerp(4200f, 900f, Mathf.Clamp01(t / 1.4f)), 1.2f);
+            float crumble = band * Env(t - 0.08f, 0.14f, 0.55f) * 0.85f;
+
+            o[i] = shriek * 0.65f + crumble;
+        }
+        return Norm(o, 0.86f);
+    }
+
+    // ------------------------------------------------------------------ repair-puzzle interface
+
+    // A panel swinging open: a low wooden knock under a rising filtered sweep.
+    static float[] PuzzleOpen()
+    {
+        int n = S(0.75f);
+        var o = new float[n];
+        float low = 0f, band = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float knock = Mathf.Sin(Ph(96f, t) * (1f - t * 0.4f)) * Env(t, 0.002f, 0.07f);
+            Bandpass(ref low, ref band, N(), Mathf.Lerp(500f, 2400f, Mathf.Clamp01(t / 0.3f)), 2.4f);
+            float sweep = band * Env(t, 0.03f, 0.16f) * 0.8f;
+            o[i] = knock * 0.7f + sweep;
+        }
+        return Norm(o, 0.7f);
+    }
+
+    // The same motion reversed: the sweep falls away and the panel settles.
+    static float[] PuzzleClose()
+    {
+        int n = S(0.55f);
+        var o = new float[n];
+        float low = 0f, band = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            Bandpass(ref low, ref band, N(), Mathf.Lerp(2200f, 420f, Mathf.Clamp01(t / 0.25f)), 2.4f);
+            float sweep = band * Env(t, 0.01f, 0.12f) * 0.8f;
+            float clunk = Mathf.Sin(Ph(78f, t)) * Env(t - 0.2f, 0.003f, 0.06f);
+            o[i] = sweep + clunk * 0.7f;
+        }
+        return Norm(o, 0.65f);
+    }
+
+    // A stiff toggle switch: dry, short, slightly different every press.
+    static float[] PuzzleClick(int v)
+    {
+        int n = S(0.12f);
+        var o = new float[n];
+        float low = 0f, band = 0f, hp = 0f, prev = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float noise = N();
+            hp = 0.9f * (hp + noise - prev); prev = noise;
+            Bandpass(ref low, ref band, hp, 1700f + v * 420f, 3.5f);
+            float tick = band * Env(t, 0.0004f, 0.012f) * 1.6f;
+            float body = Mathf.Sin(Ph(220f + v * 40f, t)) * Env(t, 0.001f, 0.02f) * 0.35f;
+            o[i] = tick + body;
+        }
+        return Norm(o, 0.6f);
+    }
+
+    // The call-sign tones: a warm valve-radio sine with a little second harmonic.
+    static float[] PuzzleTone(int v)
+    {
+        int n = S(0.4f);
+        var o = new float[n];
+        // A pentatonic run, so any order the puzzle plays them in sounds intentional.
+        float[] notes = { 392f, 440f, 523.25f, 587.33f, 698.46f };
+        float f = notes[Mathf.Clamp(v, 0, notes.Length - 1)];
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float tone = Mathf.Sin(Ph(f, t)) + 0.25f * Mathf.Sin(Ph(f * 2f, t)) + 0.08f * Mathf.Sin(Ph(f * 3f, t));
+            o[i] = tone * Env(t, 0.008f, 0.13f) * 0.55f + N() * 0.012f * Env(t, 0.005f, 0.08f);
+        }
+        return Norm(o, 0.72f);
+    }
+
+    // The set coming back to life: a rising arpeggio settling into a clean carrier.
+    static float[] PuzzleSolved()
+    {
+        int n = S(1.5f);
+        var o = new float[n];
+        float[] chord = { 523.25f, 659.25f, 783.99f, 1046.5f };
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float sum = 0f;
+            for (int k = 0; k < chord.Length; k++)
+            {
+                // Each note enters a beat after the last.
+                float onset = k * 0.11f;
+                sum += Mathf.Sin(Ph(chord[k], t)) * Env(t - onset, 0.012f, 0.5f);
+            }
+            // The carrier the repair restores, fading up underneath.
+            float carrier = Mathf.Sin(Ph(261.63f, t)) * Env(t - 0.35f, 0.25f, 0.45f) * 0.4f;
+            o[i] = sum * 0.3f + carrier;
+        }
+        return Norm(o, 0.82f);
+    }
+
+    // A rejected input: a flat buzz that stops abruptly.
+    static float[] PuzzleFail()
+    {
+        int n = S(0.34f);
+        var o = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float gate = Gate(t, 0f, 0.2f);
+            float buzz = (Square(104f, t) * 0.5f + Square(157f, t) * 0.3f) * gate;
+            o[i] = buzz * Env(t, 0.004f, 0.4f) * 0.7f + N() * 0.05f * gate;
+        }
+        return Norm(o, 0.62f);
+    }
+
+    // A hint: a soft two-note chime, deliberately unobtrusive.
+    static float[] PuzzleHint()
+    {
+        int n = S(0.7f);
+        var o = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float a = Mathf.Sin(Ph(880f, t)) * Env(t, 0.006f, 0.16f);
+            float b = Mathf.Sin(Ph(1174.66f, t)) * Env(t - 0.13f, 0.006f, 0.22f);
+            o[i] = (a + b) * 0.42f;
+        }
+        return Norm(o, 0.6f);
+    }
 
     static int S(float seconds) => Mathf.CeilToInt(seconds * Rate);
     static float N() => (float)(rng.NextDouble() * 2.0 - 1.0);

@@ -34,6 +34,12 @@ public class GameManager : MonoBehaviour
 
     public GameState State { get; private set; } = GameState.MainMenu;
     public float SurvivalTime { get; private set; }
+
+    /// <summary>
+    /// Randomises the generated content of a run (currently the repair-puzzle layouts) so a
+    /// second playthrough is not a memory test, while keeping every board stable within a run.
+    /// </summary>
+    public int RunSeed { get; private set; } = 1;
     public bool IsGameplayActive => State == GameState.Playing || State == GameState.PrayerEmergency;
     public RunResult LastResult { get; private set; }
     public string DefeatCause { get; set; } = "The dark took you.";
@@ -128,6 +134,7 @@ public class GameManager : MonoBehaviour
     public void StartGame()
     {
         SurvivalTime = 0f;
+        RunSeed = UnityEngine.Random.Range(1, int.MaxValue);
         SetCameras(menu: false);
         if (player) player.ControlEnabled = true;
         if (fuel) fuel.Draining = true;

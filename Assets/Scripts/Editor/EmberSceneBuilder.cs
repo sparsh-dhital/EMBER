@@ -50,6 +50,7 @@ public static class EmberSceneBuilder
         public PlayerAnimator animator;
         public PrayerSystem prayer;
         public LanternLight lantern;
+        public SwordController sword;
         public EmberCharacterBuilder.PlayerParts parts;
         public CapsuleCollider hitbox;
     }
@@ -105,6 +106,18 @@ public static class EmberSceneBuilder
         p.animator.animator = p.parts.animator;
         p.animator.controller = p.controller;
         p.animator.leanRoot = p.parts.model;
+
+        // The sword lives on the player root, not on the blade, so its hit arcs are measured
+        // from where the character is standing rather than from wherever the animation has
+        // flung the blade this frame.
+        p.sword = Fresh<SwordController>(go);
+        p.sword.swordRoot = p.parts.swordRoot;
+        p.sword.bladeRenderers = p.parts.bladeRenderers;
+        p.sword.controller = p.controller;
+        p.sword.playerAnimator = p.animator;
+        p.sword.fuel = p.fuel;
+        p.sword.lantern = p.lantern;
+        p.animator.sword = p.sword;
 
         var feet = Fresh<FootPlacement>(go);
         feet.controller = p.controller;
@@ -271,6 +284,31 @@ public static class EmberSceneBuilder
             E(Sfx.Defeat, 0.85f, 0f, "defeat"),
             E(Sfx.UiClick, 0.5f, 0.05f, "ui_click"),
             E(Sfx.Heartbeat, 0.9f, 0f, "heartbeat"),
+
+            // Surface-dependent footsteps. FootstepSurface picks between these from what
+            // is actually under the boot; Sfx.Footstep stays the fallback.
+            E(Sfx.FootstepDirt, 0.55f, 0.09f, "footstep_dirt_0", "footstep_dirt_1", "footstep_dirt_2"),
+            E(Sfx.FootstepLeaves, 0.5f, 0.11f, "footstep_leaves_0", "footstep_leaves_1", "footstep_leaves_2"),
+            E(Sfx.FootstepWood, 0.6f, 0.08f, "footstep_wood_0", "footstep_wood_1", "footstep_wood_2"),
+            E(Sfx.FootstepStone, 0.58f, 0.08f, "footstep_stone_0", "footstep_stone_1", "footstep_stone_2"),
+
+            // Sword combat.
+            E(Sfx.SwordSwing, 0.6f, 0.07f, "sword_swing_0", "sword_swing_1", "sword_swing_2"),
+            E(Sfx.SwordHit, 0.9f, 0.08f, "sword_hit_0", "sword_hit_1", "sword_hit_2"),
+            E(Sfx.SwordBreak, 0.95f, 0.04f, "sword_parry"),
+            E(Sfx.SwordPickup, 0.9f, 0f, "sword_pickup"),
+            E(Sfx.LethalStrike, 1f, 0.03f, "lethal_strike"),
+            E(Sfx.VampireStagger, 0.85f, 0.1f, "vampire_stagger_0", "vampire_stagger_1"),
+            E(Sfx.VampireDeath, 0.95f, 0.06f, "vampire_death"),
+
+            // Repair-puzzle interface.
+            E(Sfx.PuzzleOpen, 0.7f, 0.02f, "puzzle_open"),
+            E(Sfx.PuzzleClose, 0.6f, 0.02f, "puzzle_close"),
+            E(Sfx.PuzzleClick, 0.45f, 0.06f, "puzzle_click_0", "puzzle_click_1", "puzzle_click_2"),
+            E(Sfx.PuzzleTone, 0.6f, 0f, "puzzle_tone_0", "puzzle_tone_1", "puzzle_tone_2", "puzzle_tone_3", "puzzle_tone_4"),
+            E(Sfx.PuzzleSolved, 0.85f, 0f, "puzzle_solved"),
+            E(Sfx.PuzzleFail, 0.6f, 0.03f, "puzzle_fail"),
+            E(Sfx.PuzzleHint, 0.5f, 0f, "puzzle_hint"),
         };
         a.windLoop = L("loop_wind");
         a.insectsLoop = L("loop_insects");
@@ -480,6 +518,7 @@ public static class EmberSceneBuilder
         hud.prayer = p.prayer;
         hud.interactor = p.interactor;
         hud.health = p.health;
+        hud.sword = p.sword;
         hud.radioCentre = rc;
         hud.player = p.go.transform;
 

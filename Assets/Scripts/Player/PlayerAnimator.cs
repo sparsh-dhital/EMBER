@@ -7,6 +7,8 @@ public class PlayerAnimator : MonoBehaviour
     [Header("References")]
     public Animator animator;
     public PlayerController controller;
+    [Tooltip("Optional. Drives the upper-body layer so sword swings and guards actually show.")]
+    public SwordController sword;
     [Tooltip("The model root that leans into turns (a child of the player, parent of the Hips).")]
     public Transform leanRoot;
 
@@ -26,6 +28,11 @@ public class PlayerAnimator : MonoBehaviour
     [Tooltip("Where in the locomotion cycle each foot lands (0-1). Clips are authored with contacts at 0.25 and 0.75.")]
     public float leftContact = 0.25f, rightContact = 0.75f;
 
+    [Tooltip("How fast the sword layer fades in and out. Higher snaps harder.")]
+    public float upperBodyBlendSpeed = 6f;
+    float upperBodyWeight;
+    float upperBodyHold;
+
     static readonly int SpeedId = Animator.StringToHash("Speed");
     static readonly int MoveMulId = Animator.StringToHash("MoveMul");
     static readonly int GroundedId = Animator.StringToHash("Grounded");
@@ -36,6 +43,7 @@ public class PlayerAnimator : MonoBehaviour
     static readonly int HitId = Animator.StringToHash("Hit");
     static readonly int DeadId = Animator.StringToHash("Dead");
     static readonly int PrayId = Animator.StringToHash("Pray");
+    static readonly int GuardId = Animator.StringToHash("Guard");
     static readonly int WorkId = Animator.StringToHash("Work");
     static readonly int AttackId = Animator.StringToHash("Attack");
     static readonly int LocomotionId = Animator.StringToHash("Locomotion");
@@ -68,6 +76,8 @@ public class PlayerAnimator : MonoBehaviour
     public void SetPraying(bool on) { if (animator) animator.SetBool(PrayId, on); }
     public void SetWorking(bool on) { if (animator) animator.SetBool(WorkId, on); }
     public void PlayAttack() { if (animator) animator.SetTrigger(AttackId); }
+    /// <summary>Sword raised in a guard: held, unlike the one-shot attack.</summary>
+    public void SetGuarding(bool on) { if (animator) animator.SetBool(GuardId, on); }
 
     void OnJump()
     {
@@ -112,6 +122,24 @@ public class PlayerAnimator : MonoBehaviour
         }
 
         UpdateFootsteps();
+        UpdateUpperBodyLayer();
+    }
+
+    // The sword layer plays over whatever the legs are doing. It is faded in only while
+    // there is something to show, so walking around unarmed keeps the plain locomotion pose.
+    void UpdateUpperBodyLayer()
+    {
+        if (!animator || animator.layerCount < 2) return;
+
+        bool wants = sword && sword.HasSword &&
+                     sword.CurrentStance != SwordController.Stance.Idle;
+        // Hold the layer up briefly after a swing so the follow-through is not cut off.
+        if (wants) upperBodyHold = 0.35f;
+        else upperBodyHold = Mathf.Max(0f, upperBodyHold - Time.deltaTime);
+
+        float target = wants || upperBodyHold > 0f ? 1f : 0f;
+        upperBodyWeight = Mathf.MoveTowards(upperBodyWeight, target, upperBodyBlendSpeed * Time.deltaTime);
+        animator.SetLayerWeight(1, upperBodyWeight);
     }
 
     // Footsteps land on the animation's own contact frames, so they always match what the legs are doing.

@@ -7,6 +7,12 @@ public class RadioPart : MonoBehaviour, IInteractable
     public string partName = "Radio part";
     public RadioMissionSystem mission;
 
+    [Header("Repair Puzzle")]
+    [Tooltip("Which puzzle guards this part. Each part is assigned a different mechanic.")]
+    public PuzzleKind puzzle = PuzzleKind.SignalCalibration;
+    [Tooltip("Off only for parts that should be picked up outright (none by default).")]
+    public bool requiresPuzzle = true;
+
     [Header("Clues")]
     public Renderer indicator;
     [ColorUsage(false, true)] public Color indicatorColor = new Color(0.4f, 2.2f, 1.1f);
@@ -21,17 +27,21 @@ public class RadioPart : MonoBehaviour, IInteractable
     public ParticleSystem pickupBurst;
 
     public bool Collected { get; private set; }
-    public string Prompt => Collected ? null : "Take " + partName.ToLower();
+    public string Prompt => Collected ? null : (requiresPuzzle ? "Repair " : "Take ") + partName.ToLower();
     public bool CanInteract => !Collected;
 
     AudioSource beepSource;
-    MaterialPropertyBlock mpb;
+    bool busy;   // a board is open for this part
+    // Lazily created rather than built in Awake: a domain reload (recompiling while play
+    // mode is running) clears non-serialized fields without calling Awake again, which
+    // used to leave this null and throw once per renderer per frame.
+    MaterialPropertyBlock mpbCache;
+    MaterialPropertyBlock mpb => mpbCache ??= new MaterialPropertyBlock();
     float phase;
     static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
 
     void Awake()
     {
-        mpb = new MaterialPropertyBlock();
         phase = Random.value * beepInterval;
 
         beepSource = gameObject.AddComponent<AudioSource>();
@@ -65,6 +75,38 @@ public class RadioPart : MonoBehaviour, IInteractable
     }
 
     public void Interact(PlayerInteractor player)
+    {
+        if (Collected || busy) return;
+
+        // A part is salvaged, not picked up: the set has to be coaxed back to life first.
+        // Only a solved board awards it, so backing out of the puzzle leaves the part in
+        // the world to be attempted again.
+        if (requiresPuzzle && PuzzlePanel.Instance != null)
+        {
+            busy = true;
+            AudioManager.Play(Sfx.PuzzleOpen, 0.8f);
+            var request = PuzzleRequest.ForPart(puzzle, partName, PuzzleSeed());
+            PuzzlePanel.Instance.Open(request, outcome =>
+            {
+                busy = false;
+                if (outcome == PuzzleOutcome.Solved) Award();
+                else GameEvents.ShowMessage("REPAIR ABANDONED", partName + " is still on the bench", 2.2f);
+            });
+            return;
+        }
+
+        Award();
+    }
+
+    // A stable per-part seed: the same part always poses the same board within a run,
+    // but a new run reshuffles them.
+    int PuzzleSeed()
+    {
+        int runSalt = GameManager.Instance ? GameManager.Instance.RunSeed : 0;
+        return partName.GetHashCode() ^ (runSalt * 397);
+    }
+
+    void Award()
     {
         if (Collected) return;
         Collected = true;

@@ -65,11 +65,13 @@ public class RadioCentre : MonoBehaviour, IInteractable
 
     public bool CanInteract => CurrentPhase == Phase.Ready;
 
-    MaterialPropertyBlock mpb;
+    // Lazily created rather than built in Awake: a domain reload (recompiling while play
+    // mode is running) clears non-serialized fields without calling Awake again, which
+    // used to leave this null and throw once per renderer per frame.
+    MaterialPropertyBlock mpbCache;
+    MaterialPropertyBlock mpb => mpbCache ??= new MaterialPropertyBlock();
     PlayerInteractor caller;
     static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
-
-    void Awake() => mpb = new MaterialPropertyBlock();
 
     void OnEnable() => GameEvents.AllRadioPartsCollected += HandleAllParts;
     void OnDisable() => GameEvents.AllRadioPartsCollected -= HandleAllParts;

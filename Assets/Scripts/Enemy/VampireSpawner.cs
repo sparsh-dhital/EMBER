@@ -124,7 +124,10 @@ public class VampireSpawner : MonoBehaviour
             else if (fuel.Band == LightBand.Out) count += extraWhenDark + extraWhenLightMedium;
         }
         if (mission && partsPerExtraVampire > 0) count += mission.Collected / partsPerExtraVampire;
-        return Mathf.Clamp(count, 0, maxVampires);
+        count += GameConfig.Current.extraVampires;
+        // At least one stalker once the light is failing, whatever the difficulty subtracts.
+        int floor = fuel && (fuel.Band == LightBand.Critical || fuel.Band == LightBand.Out) ? 1 : 0;
+        return Mathf.Clamp(count, floor, maxVampires);
     }
 
     void Update()

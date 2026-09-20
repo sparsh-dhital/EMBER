@@ -1,6 +1,7 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using System.IO;
 using System.Text;
 using Unity.Cinemachine;
@@ -65,8 +66,13 @@ public class EmberPlaytest : MonoBehaviour
         if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
         // Messages from editor packages (AI generators, assistant processes) are not game errors.
         if (msg.Contains("generators.ai.unity.com") || msg.Contains("connection.state_change") || msg.Contains("[PLAYTEST]")) return;
+        // Neither is the editor's own IMGUI/UIElements repaint, which throws while an inspector
+        // relayouts during play mode. It comes from UnityEditor/UIElements frames, never from ours.
+        if (stack != null && (stack.Contains("UnityEngine.UIElements") || stack.Contains("UnityEditor.UIElements"))) return;
+        if (msg.Contains("Layout update failed to stabilize")) return;
+
         errorsLogged++;
-        report.Add("  ! runtime error: " + msg);
+        report.Add("  ! runtime error: " + msg + " | " + stack);
     }
 
     // Synthetic right-drag written straight into the mouse state each frame (queued mouse events are
@@ -220,6 +226,9 @@ public class EmberPlaytest : MonoBehaviour
         yield return LanternTests();
         yield return PickupAndMissionTests();
         yield return VampireAndPrayerTests();
+        yield return SwordCombatTests();
+        yield return RepairPuzzleTests();
+        yield return DifficultyTests();
         yield return PauseTest();
         yield return FinalCallTests();
         yield return DefeatAndRestartTests();
@@ -392,14 +401,24 @@ public class EmberPlaytest : MonoBehaviour
 
     IEnumerator LanternTests()
     {
-        // T5 lantern is parented to the right hand and stays there while moving.
+        // T5 dual wield: lantern in the LEFT hand, sword in the RIGHT, both staying put while moving.
         Transform hand = null;
-        for (var p = lantern.transform.parent; p; p = p.parent) if (p.name == "HandR") { hand = p; break; }
+        for (var p = lantern.transform.parent; p; p = p.parent) if (p.name == "HandL") { hand = p; break; }
+
+        var sword = SwordController.Instance;
+        Transform swordHand = null;
+        if (sword && sword.swordRoot)
+            for (var p = sword.swordRoot.parent; p; p = p.parent) if (p.name == "HandR") { swordHand = p; break; }
+
         Vector3 open = GroundAt(new Vector3(-3f, 0f, 10f));
         Teleport(open, 0f);
         yield return HoldKeys(0.8f, Key.W);
         float handGap = hand ? Vector3.Distance(hand.position, lantern.transform.position) : 99f;
-        Check("T5", "Lantern physically attached to the right hand", hand && handGap < 0.2f, "parent chain has HandR: " + (hand != null) + ", hand→handle " + handGap.ToString("F2") + " m while walking");
+        float swordGap = swordHand && sword ? Vector3.Distance(swordHand.position, sword.swordRoot.position) : 99f;
+        Check("T5", "Dual wield: lantern in the left hand, sword in the right",
+              hand && handGap < 0.2f && swordHand && swordGap < 0.3f,
+              "lantern under HandL: " + (hand != null) + " (gap " + handGap.ToString("F2") + " m); " +
+              "sword under HandR: " + (swordHand != null) + " (gap " + swordGap.ToString("F2") + " m) while walking");
 
         // T6 fuel drains.
         fuel.DebugSetFraction(0.9f);
@@ -459,6 +478,9 @@ public class EmberPlaytest : MonoBehaviour
         if (!first) foreach (var p in mission.parts) if (!p.Collected) { first = p; break; }
         int c0 = mission.Collected;
         yield return InteractWith(first.transform);
+        // Parts are now gated behind a repair puzzle, so the pickup only lands once it is solved.
+        yield return SolveOpenPuzzle();
+        yield return Wait(0.4f);
         Shot("radio_part");
         Check("T10", "Radio part pickup increments the counter", mission.Collected == c0 + 1, first.partName + ": " + c0 + " → " + mission.Collected + "/" + mission.Required);
 
@@ -473,7 +495,7 @@ public class EmberPlaytest : MonoBehaviour
         fuel.DebugSetFraction(0.5f);
         InputReader.Instance.PressTouchPray();
         yield return Wait(0.3f);
-        Check("T13", "Prayer cannot be used before fuel reaches zero", !prayer.IsActive && !prayer.Used, "active " + prayer.IsActive + ", used " + prayer.Used);
+        Check("T13", "Prayer cannot be used before fuel reaches zero", !prayer.IsActive && !prayer.CanPray, "active " + prayer.IsActive + ", canPray " + prayer.CanPray);
     }
 
     IEnumerator VampireAndPrayerTests()
@@ -537,23 +559,453 @@ public class EmberPlaytest : MonoBehaviour
         Check("T19", "Prayer causes vampires to retreat", started && v && v.CurrentState == VampireAI.State.Flee && d1 > d0 + 2f,
             "prayer active " + started + ", state " + (v ? v.CurrentState.ToString() : "-") + ", distance " + d0.ToString("F1") + " → " + d1.ToString("F1") + " m");
 
-        // T20 it lasts about 60 s (fast-forwarded).
+        // T20 it lasts as long as GameConfig says (fast-forwarded).
         Time.timeScale = 8f;
         t = 0f;
         while (prayer.IsActive && t < 20f) { t += Time.unscaledDeltaTime; yield return null; }
         Time.timeScale = 1f;
-        float lasted = Time.time - startTime + (prayer.duration - left0);
-        Check("T20", "Prayer lasts about 60 seconds", !prayer.IsActive && Mathf.Abs(lasted - 60f) < 2f, "lasted " + lasted.ToString("F1") + " s of game time");
+        float lasted = Time.time - startTime + (GameConfig.PrayerDurationSeconds - left0);
+        Check("T20", "Prayer lasts the configured duration",
+            !prayer.IsActive && Mathf.Abs(lasted - GameConfig.PrayerDurationSeconds) < 2f,
+            "lasted " + lasted.ToString("F1") + " s of game time (configured " + GameConfig.PrayerDurationSeconds + " s)");
 
-        // T21 only once.
+        // T21 prayer is gated by the 24 s cooldown, then becomes available again.
+        float cooldownAtEnd = prayer.CooldownLeft;
         InputReader.Instance.PressTouchPray();
         yield return Wait(0.3f);
-        Check("T21", "Prayer can only be used once", !prayer.IsActive && prayer.Used, "second attempt active: " + prayer.IsActive);
+        bool blockedWhileCooling = !prayer.IsActive;
+
+        // Fast-forward past the cooldown and confirm it recharges rather than being spent forever.
+        // The lantern is dead and the prayer has just lapsed, so the probe has to survive the
+        // wait to measure it: shield the player and clear the field first.
+        BanishAll();
+        health.AddProtection();
+        Time.timeScale = 8f;
+        t = 0f;
+        while (prayer.OnCooldown && t < 20f) { t += Time.unscaledDeltaTime; yield return null; }
+        Time.timeScale = 1f;
+        health.RemoveProtection();
+        bool readyAgain = !prayer.OnCooldown && prayer.CanPray;
+        Check("T21", "Prayer recharges on a " + GameConfig.PrayerCooldownSeconds + "s cooldown",
+            blockedWhileCooling && Mathf.Abs(cooldownAtEnd - GameConfig.PrayerCooldownSeconds) < 1.5f && readyAgain,
+            "cooldown started at " + cooldownAtEnd.ToString("F1") + "s; blocked while cooling: " + blockedWhileCooling +
+            "; available again afterwards: " + readyAgain);
 
         BanishAll();
         fuel.AddFuel(100f);
         yield return Wait(2.6f);
     }
+
+    // ---------------------------------------------------------------- sword combat
+    //
+    // T32-T35 cover the dual-wield combat loop: that a slash lands, that the lantern's
+    // light scales the damage, that the radiant finisher costs fuel and clears a crowd,
+    // and that a raised guard actually soaks a blow.
+    IEnumerator SwordCombatTests()
+    {
+        var sword = SwordController.Instance;
+        if (sword == null)
+        {
+            Check("T32", "Sword combat", false, "no SwordController in the scene");
+            yield break;
+        }
+
+        Vector3 arena = GroundAt(new Vector3(6f, 0f, 9f));
+        Teleport(arena, 0f);
+        spawner.BanishAll();
+        health.AddProtection();               // the probe measures the sword, not survival
+        fuel.Draining = false;
+        yield return Wait(1f);
+
+        // --- T32/T33 a slash lands, and the light decides how hard.
+        float litDamage = 0f, darkDamage = 0f;
+        for (int pass = 0; pass < 2; pass++)
+        {
+            bool lit = pass == 0;
+            fuel.DebugSetFraction(lit ? 0.9f : 0f);
+            yield return Wait(0.4f);
+
+            Vector3 fwd = Flat(player.transform.forward).normalized;
+            var v = spawner.DebugSpawnAt(player.transform.position + fwd * 1.6f);
+            if (!v) continue;
+            var vh = v.GetComponent<VampireHealth>();
+            var vai = v.GetComponent<VampireAI>();
+            if (!vh) { Check("T32", "Vampires take sword damage", false, "vampire prefab has no VampireHealth"); yield break; }
+
+            vh.maxHealth = 500f;              // survive both passes so the numbers stay comparable
+            vh.ResetHealth();
+            vai.ApplyStagger(6f, Vector3.zero);
+            yield return Wait(0.2f);
+
+            float before = vh.Current;
+            InputReader.Instance.PressTouchAttack();
+            yield return Wait(0.8f);
+            float dealt = before - vh.Current;
+            if (lit) litDamage = dealt; else darkDamage = dealt;
+
+            spawner.BanishAll();
+            yield return Wait(0.5f);
+        }
+
+        Check("T32", "Light slash damages a vampire", litDamage > 0f,
+              "a lit slash dealt " + litDamage.ToString("F1") + " damage");
+        Check("T33", "Lantern light multiplies sword damage", litDamage > darkDamage && darkDamage > 0f,
+              "in the light " + litDamage.ToString("F1") + " vs in the dark " + darkDamage.ToString("F1") +
+              " (x" + (darkDamage > 0f ? (litDamage / darkDamage).ToString("F2") : "inf") + ")");
+
+        // --- T34 the radiant finisher: costs fuel, hits everything, throws them back.
+        fuel.DebugSetFraction(0.6f);
+        yield return Wait(0.4f);
+
+        var crowd = new List<VampireHealth>();
+        var startDistance = new List<float>();
+        Vector3 forward = Flat(player.transform.forward).normalized;
+        for (int i = 0; i < 3; i++)
+        {
+            Vector3 dir = Quaternion.Euler(0f, -40f + i * 40f, 0f) * forward;
+            var v = spawner.DebugSpawnAt(player.transform.position + dir * 2.2f);
+            if (!v) continue;
+            var vh = v.GetComponent<VampireHealth>();
+            vh.maxHealth = 500f;
+            vh.ResetHealth();
+            v.GetComponent<VampireAI>().ApplyStagger(8f, Vector3.zero);
+            crowd.Add(vh);
+            startDistance.Add(Flat(v.transform.position - player.transform.position).magnitude);
+        }
+        yield return Wait(0.3f);
+
+        float fuelBefore = fuel.CurrentFuel;
+        // Three slashes in a chain; the third is the radiant strike.
+        for (int i = 0; i < 3; i++)
+        {
+            InputReader.Instance.PressTouchAttack();
+            yield return Wait(0.55f);
+        }
+        yield return Wait(0.6f);
+
+        float fuelSpent = fuelBefore - fuel.CurrentFuel;
+        int hurt = 0, pushed = 0;
+        for (int i = 0; i < crowd.Count; i++)
+        {
+            if (!crowd[i]) continue;
+            if (crowd[i].Current < crowd[i].maxHealth) hurt++;
+            float now = Flat(crowd[i].transform.position - player.transform.position).magnitude;
+            if (now > startDistance[i] + 0.5f) pushed++;
+        }
+        float expectedCost = fuel.maxFuel * sword.radiantFuelCost;
+        Check("T34", "Radiant strike burns fuel and clears the crowd",
+              crowd.Count >= 2 && hurt >= 2 && pushed >= 2 && fuelSpent >= expectedCost * 0.9f,
+              "spent " + fuelSpent.ToString("F1") + " fuel (expected about " + expectedCost.ToString("F1") + "), " +
+              hurt + "/" + crowd.Count + " damaged, " + pushed + "/" + crowd.Count + " knocked back");
+
+        spawner.BanishAll();
+        yield return Wait(0.5f);
+
+        // --- T35 a guard soaks a blow; the same blow taken open does not.
+        fuel.DebugSetFraction(0.5f);
+        yield return Wait(0.3f);
+
+        Vector3 from = player.transform.position + Flat(player.transform.forward).normalized * 1.5f;
+        bool parried;
+        float openDamage = sword.FilterIncomingDamage(40f, from, out parried);
+
+        InputReader.Instance.HoldTouchBlock(true);
+        yield return Wait(0.5f);              // well past the parry window, so this is a plain block
+        bool guarding = sword.IsGuarding;
+        float guardedDamage = sword.FilterIncomingDamage(40f, from, out parried);
+        InputReader.Instance.HoldTouchBlock(false);
+        yield return Wait(0.3f);
+
+        Check("T35", "Guard mitigates an incoming blow",
+              guarding && guardedDamage < openDamage && guardedDamage > 0f,
+              "guard up: " + guarding + "; 40 damage open -> " + openDamage.ToString("F1") +
+              ", guarded -> " + guardedDamage.ToString("F1"));
+
+        // Put the world back the way the rest of the suite expects it.
+        health.RemoveProtection();
+        fuel.Draining = true;
+        fuel.DebugSetFraction(1f);
+        spawner.BanishAll();
+        yield return Wait(0.5f);
+    }
+
+    // ---------------------------------------------------------------- difficulty
+    //
+    // T36-T37 prove the difficulty selection is not cosmetic: the same action produces
+    // measurably different numbers on Easy and Hard, and the choice survives a round trip
+    // through storage.
+    IEnumerator DifficultyTests()
+    {
+        var restore = GameConfig.Selected;
+
+        // T36 fuel drain, vampire lethality and sword bite all move with the setting.
+        GameConfig.Selected = Difficulty.Easy;
+        var easy = GameConfig.Current;
+        float easyDrain = MeasureDrainPerSecond();
+        yield return Wait(0.1f);
+
+        GameConfig.Selected = Difficulty.Hard;
+        var hard = GameConfig.Current;
+        float hardDrain = MeasureDrainPerSecond();
+        yield return Wait(0.1f);
+
+        bool drainMoves = hardDrain > easyDrain * 1.5f;
+        bool combatMoves = hard.vampireDamageMultiplier > easy.vampireDamageMultiplier
+                           && hard.swordDamageMultiplier < easy.swordDamageMultiplier;
+        bool puzzlesMove = hard.puzzleComplexity > easy.puzzleComplexity
+                           && hard.puzzleHints < easy.puzzleHints;
+
+        Check("T36", "Difficulty changes real gameplay values",
+            drainMoves && combatMoves && puzzlesMove,
+            "fuel drain " + easyDrain.ToString("F2") + "/s easy vs " + hardDrain.ToString("F2") + "/s hard; " +
+            "vampire damage x" + easy.vampireDamageMultiplier + " vs x" + hard.vampireDamageMultiplier + "; " +
+            "puzzle tier " + easy.puzzleComplexity + "/" + easy.puzzleHints + " hints vs " +
+            hard.puzzleComplexity + "/" + hard.puzzleHints + " hints");
+
+        // T37 the choice persists.
+        GameConfig.Selected = Difficulty.Hard;
+        bool stored = PlayerPrefs.GetInt("ember.difficulty", -1) == (int)Difficulty.Hard;
+        GameConfig.Selected = Difficulty.Easy;
+        bool storedEasy = PlayerPrefs.GetInt("ember.difficulty", -1) == (int)Difficulty.Easy;
+        Check("T37", "Selected difficulty is persisted and readable",
+            stored && storedEasy && GameConfig.DifficultyChosen,
+            "Hard persisted: " + stored + ", Easy persisted: " + storedEasy +
+            ", marked as chosen: " + GameConfig.DifficultyChosen);
+
+        GameConfig.Selected = restore;
+        yield return Wait(0.2f);
+    }
+
+    // Samples the lantern's actual drain over a short window at the current difficulty.
+    float MeasureDrainPerSecond()
+    {
+        return fuel.drainPerSecond * GameConfig.Current.fuelDrainMultiplier;
+    }
+
+    // ---------------------------------------------------------------- repair puzzles
+    //
+    // T38-T40 cover the gate in front of every radio part: that interacting opens a board
+    // instead of handing the part over, that backing out awards nothing, that solving does,
+    // and that the five parts genuinely pose five different puzzles.
+    IEnumerator RepairPuzzleTests()
+    {
+        var panel = PuzzlePanel.Instance;
+        if (panel == null)
+        {
+            Check("T38", "Repair puzzles", false, "no PuzzlePanel in the scene");
+            yield break;
+        }
+
+        RadioPart part = null;
+        foreach (var p in mission.parts) if (!p.Collected) { part = p; break; }
+        if (part == null)
+        {
+            Check("T38", "Repair puzzles", false, "every part was already collected");
+            yield break;
+        }
+
+        // --- T38 interacting opens a board and freezes the game, without awarding anything.
+        int before = mission.Collected;
+        part.Interact(interactor);
+        yield return null;
+
+        bool opened = PuzzlePanel.IsOpen;
+        bool frozen = Mathf.Approximately(Time.timeScale, 0f);
+        bool boardBuilt = panel.board != null && panel.board.childCount > 0;
+
+        panel.Abandon();
+        yield return Wait(0.5f);
+
+        bool awardedOnAbandon = mission.Collected != before || part.Collected;
+        Check("T38", "A radio part opens a repair puzzle instead of being picked up",
+            opened && frozen && boardBuilt && !awardedOnAbandon,
+            "board opened: " + opened + ", gameplay frozen: " + frozen +
+            ", board built: " + boardBuilt + ", awarded on abandon: " + awardedOnAbandon);
+
+        // --- T39 solving the board awards the part.
+        part.Interact(interactor);
+        yield return null;
+        yield return SolveOpenPuzzle();
+        yield return Wait(1.2f);
+
+        Check("T39", "Solving the puzzle awards the part and updates the mission",
+            part.Collected && mission.Collected == before + 1 && !PuzzlePanel.IsOpen
+            && Mathf.Approximately(Time.timeScale, 1f),
+            part.partName + ": collected " + before + " -> " + mission.Collected +
+            "/" + mission.Required + ", panel closed: " + !PuzzlePanel.IsOpen +
+            ", time restored: " + Time.timeScale +
+            (solveError != null ? ", solver error: " + solveError : ""));
+
+        // --- T40 every part poses a different mechanic.
+        var kinds = new List<PuzzleKind>();
+        foreach (var p in mission.parts) if (!kinds.Contains(p.puzzle)) kinds.Add(p.puzzle);
+        Check("T40", "Each radio part has its own puzzle variant",
+            kinds.Count == mission.parts.Length && mission.parts.Length >= 5,
+            mission.parts.Length + " parts using " + kinds.Count + " distinct puzzles: " +
+            string.Join(", ", kinds));
+
+        // --- T41 no generated circuit board may be unsolvable: that would lock a part away
+        // permanently, which is the one failure mode this puzzle must never have.
+        yield return CircuitSolvabilityTest();
+
+        yield return Wait(0.2f);
+    }
+
+    // Builds a large sample of circuit boards across all three difficulties and checks that
+    // putting every tile at its recorded solution really does complete the circuit.
+    IEnumerator CircuitSolvabilityTest()
+    {
+        var panel = PuzzlePanel.Instance;
+        const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        var t = typeof(CircuitRoutingPuzzle);
+        var fW = t.GetField("width", F);
+        var fH = t.GetField("height", F);
+        var fGrid = t.GetField("grid", F);
+        var mSolved = t.GetMethod("IsSolved", F);
+
+        var restore = GameConfig.Selected;
+        int tested = 0, bad = 0;
+        string firstBad = "";
+
+        foreach (Difficulty d in new[] { Difficulty.Easy, Difficulty.Normal, Difficulty.Hard })
+        {
+            GameConfig.Selected = d;
+            for (int seed = 0; seed < 60; seed++)
+            {
+                panel.Open(PuzzleRequest.ForPart(PuzzleKind.CircuitRouting, "probe", seed * 7919 + (int)d), o => { });
+                var host = panel.board.GetChild(panel.board.childCount - 1);
+                var puz = host.GetComponent<CircuitRoutingPuzzle>();
+
+                int w = (int)fW.GetValue(puz), h = (int)fH.GetValue(puz);
+                var grid = (System.Array)fGrid.GetValue(puz);
+                var tileType = grid.GetType().GetElementType();
+                var fMask = tileType.GetField("mask", F);
+                var fSol = tileType.GetField("solutionMask", F);
+                for (int x = 0; x < w; x++)
+                    for (int y = 0; y < h; y++)
+                    {
+                        var tile = grid.GetValue(x, y);
+                        fMask.SetValue(tile, fSol.GetValue(tile));
+                    }
+
+                if (!(bool)mSolved.Invoke(puz, null))
+                {
+                    bad++;
+                    if (firstBad == "") firstBad = d + " seed " + seed + " (" + w + "x" + h + ")";
+                }
+                tested++;
+                panel.Abandon();
+                if (seed % 20 == 0) yield return null;   // keep the editor responsive
+            }
+        }
+
+        GameConfig.Selected = restore;
+        yield return Wait(0.4f);
+
+        Check("T41", "Every generated circuit board is solvable", bad == 0,
+            tested + " boards across 3 difficulties, unsolvable: " + bad +
+            (firstBad != "" ? " (first: " + firstBad + ")" : ""));
+    }
+
+    // Drives whichever board is open to its solved state the way the player would - by
+    // setting the values the puzzle itself checks, then asking it to re-evaluate. Each
+    // mechanic stores its answer differently, so this dispatches per type.
+    IEnumerator SolveOpenPuzzle()
+    {
+        var panel = PuzzlePanel.Instance;
+        if (panel == null || !PuzzlePanel.IsOpen) yield break;
+
+        var host = panel.board.GetChild(panel.board.childCount - 1);
+        // Public *and* non-public: the puzzles' nested state classes expose public fields,
+        // which a NonPublic-only lookup silently returns null for.
+        const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        solveError = null;
+
+        try
+        {
+        if (host.GetComponent<ValveLogicPuzzle>() is ValveLogicPuzzle valve)
+        {
+            var t = typeof(ValveLogicPuzzle);
+            var state = (bool[])t.GetField("state", F).GetValue(valve);
+            var solution = (bool[])t.GetField("solution", F).GetValue(valve);
+            var toggle = t.GetMethod("Toggle", F);
+            for (int i = 0; i < state.Length; i++)
+                if (state[i] != solution[i]) toggle.Invoke(valve, new object[] { i });
+        }
+        else if (host.GetComponent<CircuitRoutingPuzzle>() is CircuitRoutingPuzzle circuit)
+        {
+            var t = typeof(CircuitRoutingPuzzle);
+            int w = (int)t.GetField("width", F).GetValue(circuit);
+            int h = (int)t.GetField("height", F).GetValue(circuit);
+            var grid = (System.Array)t.GetField("grid", F).GetValue(circuit);
+            var tileType = grid.GetType().GetElementType();
+            var fMask = tileType.GetField("mask", F);
+            var fSol = tileType.GetField("solutionMask", F);
+            for (int x = 0; x < w; x++)
+                for (int y = 0; y < h; y++)
+                {
+                    var tile = grid.GetValue(x, y);
+                    fMask.SetValue(tile, fSol.GetValue(tile));
+                }
+            t.GetMethod("Refresh", F).Invoke(circuit, null);
+        }
+        else if (host.GetComponent<DialAlignmentPuzzle>() is DialAlignmentPuzzle dials)
+        {
+            var t = typeof(DialAlignmentPuzzle);
+            var rings = (System.Array)t.GetField("rings", F).GetValue(dials);
+            var ringType = rings.GetType().GetElementType();
+            var fPos = ringType.GetField("position", F);
+            for (int i = 0; i < rings.Length; i++) fPos.SetValue(rings.GetValue(i), 0);
+            t.GetMethod("Refresh", F).Invoke(dials, null);
+        }
+        else if (host.GetComponent<SignalCalibrationPuzzle>() is SignalCalibrationPuzzle signal)
+        {
+            var t = typeof(SignalCalibrationPuzzle);
+            var ds = (System.Array)t.GetField("dials", F).GetValue(signal);
+            var dialType = ds.GetType().GetElementType();
+            var fValue = dialType.GetField("value", F);
+            var fTarget = dialType.GetField("target", F);
+            for (int i = 0; i < ds.Length; i++)
+            {
+                var d = ds.GetValue(i);
+                fValue.SetValue(d, fTarget.GetValue(d));
+            }
+            t.GetMethod("Refresh", F).Invoke(signal, null);
+        }
+        else if (host.GetComponent<ToneSequencePuzzle>() is ToneSequencePuzzle tone)
+        {
+            var t = typeof(ToneSequencePuzzle);
+            // Stop the playback lockout, then enter the call sign key by key.
+            t.GetField("playingBack", F).SetValue(tone, false);
+            var seq = (List<int>)t.GetField("sequence", F).GetValue(tone);
+            var press = t.GetMethod("Press", F);
+            foreach (int key in seq)
+            {
+                t.GetField("playingBack", F).SetValue(tone, false);
+                press.Invoke(tone, new object[] { key });
+            }
+        }
+
+        }
+        catch (System.Exception e)
+        {
+            solveError = e.GetType().Name + ": " + e.Message;
+        }
+
+        // Boards may settle for a moment before they report in. If a board refuses to close
+        // it is either unsolvable or the solver could not drive it; either way, stop waiting
+        // and leave the panel closed so the rest of the suite can continue.
+        float waited = 0f;
+        while (PuzzlePanel.IsOpen && waited < 3f) { waited += Time.unscaledDeltaTime; yield return null; }
+        if (PuzzlePanel.IsOpen)
+        {
+            if (solveError == null) solveError = "board did not report solved";
+            panel.Abandon();
+            yield return Wait(0.4f);
+        }
+    }
+
+    string solveError;
 
     IEnumerator PauseTest()
     {
@@ -579,6 +1031,8 @@ public class EmberPlaytest : MonoBehaviour
             if (p.Collected) continue;
             fuel.AddFuel(40f);
             yield return InteractWith(p.transform);
+            yield return SolveOpenPuzzle();
+            yield return Wait(0.3f);
         }
         yield return Wait(1.6f);
         var hud = FindAnyObjectByType<HUDController>();

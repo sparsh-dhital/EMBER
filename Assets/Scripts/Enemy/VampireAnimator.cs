@@ -24,9 +24,15 @@ public class VampireAnimator : MonoBehaviour
 
     float phase;
     float windUp, strike;
+    float burn;      // white-hot sear from a holy hit, decays fast
+    float ash;       // 0..1 crumble progress once it is dying
     float fade = 1f;
     Vector3 hipsBase;
-    MaterialPropertyBlock mpb;
+    // Lazily created rather than built in Awake: a domain reload (recompiling while play
+    // mode is running) clears non-serialized fields without calling Awake again, which
+    // used to leave this null and throw once per renderer per frame.
+    MaterialPropertyBlock mpbCache;
+    MaterialPropertyBlock mpb => mpbCache ??= new MaterialPropertyBlock();
     static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
 
     // Current (smoothed) pose angles.
@@ -34,20 +40,25 @@ public class VampireAnimator : MonoBehaviour
 
     void Awake()
     {
-        mpb = new MaterialPropertyBlock();
         if (hips) hipsBase = hips.localPosition;
     }
 
     public void ResetVisual()
     {
         fade = 1f;
-        windUp = strike = 0f;
-        if (model) { model.localScale = Vector3.one; model.localPosition = Vector3.zero; }
+        windUp = strike = burn = ash = 0f;
+        if (model) { model.localScale = Vector3.one; model.localPosition = Vector3.zero; model.localRotation = Quaternion.identity; }
     }
 
     public void BeginWindUp() { windUp = 1f; strike = 0f; }
     public void Strike() { strike = 1f; windUp = 0f; }
     public void SetFade(float amount) => fade = amount;
+
+    /// <summary>A holy hit sears the skin. <paramref name="holy01"/> is how lit the strike was.</summary>
+    public void FlashBurn(float holy01) => burn = Mathf.Max(burn, Mathf.Clamp01(0.35f + holy01 * 0.65f));
+
+    /// <summary>Killed: the body starts crumbling instead of simply shrinking away.</summary>
+    public void BeginAsh() => ash = 1f;
 
     public void Animate(VampireAI.State state, float speed01, float aggression)
     {
@@ -68,9 +79,16 @@ public class VampireAnimator : MonoBehaviour
                 tTorso = 30f; tHead = -22f; tArm = -80f; tArmZ = 10f; tFore = -12f; break;
             case VampireAI.State.Banished:
                 tTorso = 40f; tHead = 20f; tArm = -130f; tArmZ = 25f; tFore = -80f; break;
+            // Reeling from a sword blow: folded over the wound, arms thrown wide.
+            case VampireAI.State.Stagger:
+                tTorso = 58f; tHead = 30f; tArm = -105f; tArmZ = 42f; tFore = -55f; tLeg = 4f; break;
+            // Dying: knees buckling, head back, arms falling.
+            case VampireAI.State.Dying:
+                tTorso = 22f; tHead = 45f; tArm = -20f; tArmZ = 48f; tFore = -8f; tLeg = 0f; break;
         }
 
         // Wind-up: arms thrown high and wide. Strike: slash down and lunge.
+        burn = Mathf.MoveTowards(burn, 0f, dt * 2.2f);
         windUp = Mathf.MoveTowards(windUp, 0f, dt * 1.2f);
         strike = Mathf.MoveTowards(strike, 0f, dt * 3.5f);
         if (windUp > 0f) { tTorso = -8f; tHead = -15f; tArm = -165f; tArmZ = 35f; tFore = -25f; }
@@ -106,18 +124,34 @@ public class VampireAnimator : MonoBehaviour
 
         if (model)
         {
-            model.localScale = Vector3.one * Mathf.Lerp(0.3f, 1f, fade);
-            model.localPosition = Vector3.down * (1f - fade) * 0.8f;
+            // Dying collapses straight down into a pile of ash; anything else just shrinks away.
+            if (ash > 0f)
+            {
+                float crumble = 1f - fade;
+                model.localScale = new Vector3(
+                    Mathf.Lerp(1f, 1.15f, crumble),
+                    Mathf.Lerp(1f, 0.05f, crumble * crumble),
+                    Mathf.Lerp(1f, 1.15f, crumble));
+                model.localPosition = Vector3.down * crumble * 0.35f;
+                model.localRotation = Quaternion.Euler(0f, Mathf.Sin(Time.time * 7f) * 3f * crumble, 0f);
+            }
+            else
+            {
+                model.localScale = Vector3.one * Mathf.Lerp(0.3f, 1f, fade);
+                model.localPosition = Vector3.down * (1f - fade) * 0.8f;
+            }
         }
 
         if (eyes != null)
         {
             float glow = Mathf.Lerp(0.5f, 1.6f, aggression) * fade * (windUp > 0f ? 1.8f : 1f);
+            // A holy hit washes the red out to a searing white before it fades back.
+            Color tint = Color.Lerp(eyeColor, new Color(7f, 6.4f, 5f), burn);
             foreach (var r in eyes)
             {
                 if (!r) continue;
                 r.GetPropertyBlock(mpb);
-                mpb.SetColor(EmissionId, eyeColor * glow);
+                mpb.SetColor(EmissionId, tint * (glow + burn * 2.5f));
                 r.SetPropertyBlock(mpb);
             }
         }

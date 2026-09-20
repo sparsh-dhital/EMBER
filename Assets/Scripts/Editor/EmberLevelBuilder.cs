@@ -10,7 +10,10 @@ using UnityEngine.Rendering.Universal;
 // terrain with a walkable hill, seven landmarks, forest, rocks, pickups, lighting, fog, post-processing and the NavMesh.
 public static class EmberLevelBuilder
 {
-    const float TerrainSize = 80f;
+    // 100 x 100 metres of playable ground. The landmarks below sit on a ring roughly
+    // 30-38 m out from the radio hill, which leaves a deep forest belt around the edge
+    // for vampires to come out of.
+    const float TerrainSize = 100f;
     const float TerrainHeight = 12f;
     const float BaseY = -1f;
     const string LevelMeshDir = "Assets/Art/Meshes/Level";
@@ -21,14 +24,14 @@ public static class EmberLevelBuilder
     struct Pad { public Vector2 c; public float inner, outer; public Pad(float x, float z, float i, float o) { c = new Vector2(x, z); inner = i; outer = o; } }
 
     static readonly Vector2 Centre = Vector2.zero;
-    static readonly Vector2 Cabin = new Vector2(-17f, 14f);
-    static readonly Vector2 Truck = new Vector2(16f, 16f);
-    static readonly Vector2 WatchPost = new Vector2(17f, -15f);
-    static readonly Vector2 Cave = new Vector2(-19f, -17f);
-    static readonly Vector2 Clearing = new Vector2(23f, -2f);
-    static readonly Vector2 Supplies = new Vector2(-23f, 1f);
-    static readonly Vector2 Chapel = new Vector2(1f, 25f);
-    static readonly Vector2 Windfall = new Vector2(-21.5f, -8f);
+    static readonly Vector2 Cabin = new Vector2(-25f, 21f);
+    static readonly Vector2 Truck = new Vector2(24f, 24f);
+    static readonly Vector2 WatchPost = new Vector2(26f, -22f);
+    static readonly Vector2 Cave = new Vector2(-28f, -26f);
+    static readonly Vector2 Clearing = new Vector2(34f, -3f);
+    static readonly Vector2 Supplies = new Vector2(-34f, 2f);
+    static readonly Vector2 Chapel = new Vector2(2f, 37f);
+    static readonly Vector2 Windfall = new Vector2(-32f, -12f);
 
     static readonly Pad[] Pads =
     {
@@ -96,7 +99,7 @@ public static class EmberLevelBuilder
 
     static void BuildPaths()
     {
-        var targets = new[] { Cabin, Truck, new Vector2(11f, -11.5f), new Vector2(-16f, -13.5f), Clearing, Supplies, new Vector2(1f, 20f) };
+        var targets = new[] { Cabin, Truck, new Vector2(16f, -16f), new Vector2(-23f, -19f), Clearing, Supplies, new Vector2(1f, 28f) };
         paths = new List<Vector2[]>();
         var prng = new System.Random(99);
         foreach (var t in targets)
@@ -319,12 +322,17 @@ public static class EmberLevelBuilder
         return go;
     }
 
-    static RadioPart PlaceRadioPart(Transform parent, Vector3 localPos, float yaw, string partName)
+    // Every part is guarded by a different repair puzzle, chosen to suit what the component
+    // actually does: you calibrate a coil, route a battery, tune a crystal, and so on.
+    static RadioPart PlaceRadioPart(Transform parent, Vector3 localPos, float yaw, string partName,
+                                    PuzzleKind puzzle)
     {
         var go = PlacePrefab(EmberPrefabBuilder.RadioPartPath, parent, parent.TransformPoint(localPos), parent.eulerAngles.y + yaw);
         go.name = "RadioPart_" + partName.Replace(" ", "");
         var part = go.GetComponent<RadioPart>();
         part.partName = partName;
+        part.puzzle = puzzle;
+        part.requiresPuzzle = true;
         return part;
     }
 
@@ -478,7 +486,7 @@ public static class EmberLevelBuilder
         Box("ChairTipped", g, new Vector3(0.3f, 0.3f, -0.4f), new Vector3(0.5f, 0.5f, 0.08f), "WoodDark", new Vector3(80f, 20f, 0f));
         Box("Shelf", g, new Vector3(2.2f, 1.2f, -1.2f), new Vector3(0.35f, 1.8f, 1.2f), "WoodDark");
         Box("Bed", g, new Vector3(-1.6f, 0.4f, 1f), new Vector3(1.4f, 0.4f, 1.9f), "Canvas");
-        PlaceRadioPart(g, new Vector3(-1.3f, 0.86f, -1.15f), 20f, "Antenna Coil");
+        PlaceRadioPart(g, new Vector3(-1.3f, 0.86f, -1.15f), 20f, "Antenna Coil", PuzzleKind.SignalCalibration);
 
         for (int i = 0; i < 7; i++)
         {
@@ -509,7 +517,7 @@ public static class EmberLevelBuilder
         Cyl("WheelRL", body, new Vector3(-1f, 0.45f, -1.7f), 0.45f, 0.3f, "Tyre", new Vector3(0f, 0f, 90f));
         Cyl("WheelRR", body, new Vector3(1f, 0.45f, -1.7f), 0.45f, 0.3f, "Tyre", new Vector3(0f, 0f, 90f));
         Cyl("WheelLoose", g, new Vector3(2.8f, 0.16f, 2.5f), 0.45f, 0.3f, "Tyre", new Vector3(0f, 0f, 8f));
-        PlaceRadioPart(body, new Vector3(-0.3f, 1f, -1.2f), -30f, "Battery Pack");
+        PlaceRadioPart(body, new Vector3(-0.3f, 1f, -1.2f), -30f, "Battery Pack", PuzzleKind.CircuitRouting);
         Rock("Rock", g, new Vector3(-2.8f, 0.2f, -1.5f), new Vector3(1.2f, 0.9f, 1f), 30f, 1);
     }
 
@@ -557,7 +565,7 @@ public static class EmberLevelBuilder
             new Vector3(0f, 0f, Mathf.Atan2(railDrop, railLength) * Mathf.Rad2Deg), false);
 
         Box("Crate", g, new Vector3(0.7f, deck + 0.3f, 0.7f), new Vector3(0.6f, 0.45f, 0.6f), "Wood", new Vector3(0f, 20f, 0f));
-        PlaceRadioPart(g, new Vector3(0.65f, deck + 0.53f, 0.65f), 10f, "Transmitter Valve");
+        PlaceRadioPart(g, new Vector3(0.65f, deck + 0.53f, 0.65f), 10f, "Transmitter Valve", PuzzleKind.ValveLogic);
     }
 
     static void BuildCave(Transform parent)
@@ -576,7 +584,7 @@ public static class EmberLevelBuilder
         Rock("Boulder2", g, new Vector3(4.2f, 0.2f, 4.9f), new Vector3(1f, 0.8f, 1.1f), 130f, 1);
         Rock("Pebble", g, new Vector3(1f, 0.1f, 3.5f), new Vector3(0.5f, 0.4f, 0.5f), 10f, 0, "Rock", false);
         Box("OldCrate", g, new Vector3(-0.4f, 0.3f, -3.4f), new Vector3(0.6f, 0.6f, 0.6f), "WoodDark", new Vector3(0f, 25f, 0f));
-        PlaceRadioPart(g, new Vector3(-0.4f, 0.62f, -3.4f), 0f, "Tuning Crystal");
+        PlaceRadioPart(g, new Vector3(-0.4f, 0.62f, -3.4f), 0f, "Tuning Crystal", PuzzleKind.DialAlignment);
     }
 
     static void BuildClearing(Transform parent)
@@ -594,7 +602,7 @@ public static class EmberLevelBuilder
         Cyl("CharredLogB", g, new Vector3(-1.2f, 0.1f, -0.8f), 0.06f, 0.8f, "Tyre", new Vector3(90f, -40f, 0f), false);
         var embers = EmberFX.Embers(g, new Vector3(-1.2f, 0.12f, -0.8f), new Color(1f, 0.35f, 0.1f), 1.5f, 0.03f);
         embers.GetComponent<ParticleSystemRenderer>().sharedMaterial = EmberArt.Load("P_Spark");
-        PlaceRadioPart(g, new Vector3(0.5f, 0.5f, 0.3f), 40f, "Microphone");
+        PlaceRadioPart(g, new Vector3(0.5f, 0.5f, 0.3f), 40f, "Microphone", PuzzleKind.ToneSequence);
     }
 
     static void BuildSupplies(Transform parent)
@@ -633,8 +641,16 @@ public static class EmberLevelBuilder
 
         Box("Altar", g, new Vector3(0f, 0.55f, 3f), new Vector3(1.6f, 0.95f, 0.8f), "Stone");
         Box("AltarCloth", g, new Vector3(0f, 1.035f, 3f), new Vector3(1.7f, 0.03f, 0.5f), "Scarf", default, false);
-        Box("CrossUpright", g, new Vector3(0f, 2.6f, 3.75f), new Vector3(0.22f, 2.4f, 0.2f), "Stone");
-        Box("CrossBeam", g, new Vector3(0f, 3.15f, 3.75f), new Vector3(1.1f, 0.22f, 0.2f), "Stone");
+        // The shrine's marker matches the faith the prayer mechanic actually uses: a weathered
+        // stone stele carrying a carved Om rather than a cross.
+        Box("SteleColumn", g, new Vector3(0f, 2.3f, 3.75f), new Vector3(0.9f, 1.8f, 0.24f), "Stone");
+        Box("SteleCap", g, new Vector3(0f, 3.28f, 3.75f), new Vector3(1.1f, 0.18f, 0.32f), "Stone");
+        Box("SteleBase", g, new Vector3(0f, 1.45f, 3.75f), new Vector3(1.15f, 0.22f, 0.34f), "Stone");
+        // The material has back-face culling off, so the carving reads from either approach.
+        var carved = EmberCharacterBuilder.Part("SteleOm", PrimitiveType.Quad, g,
+                         new Vector3(0f, 2.42f, 3.60f), new Vector3(0.72f, 0.72f, 1f),
+                         EmberArt.Load("OmSymbol"));
+        carved.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         foreach (var x in new[] { -0.6f, 0.6f })
         {
             Cyl("Candle", g, new Vector3(x, 1.12f, 3.1f), 0.035f, 0.16f, "Canvas", default, false);
@@ -711,11 +727,12 @@ public static class EmberLevelBuilder
         var temp = Group("TreeTemp", forest, Vector3.zero, 0f);
 
         var points = new List<Vector2>();
-        for (int attempt = 0; attempt < 6000 && points.Count < 230; attempt++)
+        // Scaled with the map: the same look, spread over 96 m instead of 76 m.
+        for (int attempt = 0; attempt < 11000 && points.Count < 360; attempt++)
         {
-            var p = new Vector2((float)(rng.NextDouble() * 76.0 - 38.0), (float)(rng.NextDouble() * 76.0 - 38.0));
+            var p = new Vector2((float)(rng.NextDouble() * 96.0 - 48.0), (float)(rng.NextDouble() * 96.0 - 48.0));
             float edge = Mathf.Max(Mathf.Abs(p.x), Mathf.Abs(p.y));
-            bool border = edge > 29f;
+            bool border = edge > 38f;
             float minDist = border ? 2.2f : 3.1f;
             if (!border && rng.NextDouble() > 0.6) continue;
             if (!IsClearArea(p, 0f)) continue;
@@ -829,8 +846,10 @@ public static class EmberLevelBuilder
         // Near the start (safe), on the way to landmarks, at the supply cache, and a couple of risky ones.
         Vector2[] spots =
         {
-            new Vector2(2.5f, 8.5f), new Vector2(-11f, 7f), new Vector2(11f, 11.5f), new Vector2(-21.5f, 3.2f),
-            new Vector2(-24.2f, -1.2f), new Vector2(9f, -9f), new Vector2(-9f, -21f), new Vector2(6f, 21.5f), new Vector2(26f, 3.5f)
+            new Vector2(2.5f, 9f), new Vector2(-13f, 9f), new Vector2(14f, 14f), new Vector2(-31f, 5f),
+            new Vector2(-34f, -2f), new Vector2(13f, -13f), new Vector2(-14f, -28f), new Vector2(7f, 29f),
+            new Vector2(33f, 6f), new Vector2(-24f, 16f), new Vector2(28f, -14f), new Vector2(-4f, -17f),
+            new Vector2(20f, -30f), new Vector2(-33f, -18f),
         };
         for (int i = 0; i < spots.Length; i++)
         {
@@ -843,7 +862,8 @@ public static class EmberLevelBuilder
     static void BuildBounds(Transform root)
     {
         var b = Group("WorldBounds", root, Vector3.zero, 0f);
-        const float e = 33.5f;
+        // Just inside the terrain edge, so you hit trees before you hit the wall.
+        const float e = 44f;
         void Wall(string n, Vector3 pos, Vector3 size)
         {
             var go = new GameObject(n);
@@ -852,10 +872,10 @@ public static class EmberLevelBuilder
             go.AddComponent<BoxCollider>().size = size;
             SetStatic(go);
         }
-        Wall("North", new Vector3(0f, 5f, e), new Vector3(70f, 14f, 1f));
-        Wall("South", new Vector3(0f, 5f, -e), new Vector3(70f, 14f, 1f));
-        Wall("East", new Vector3(e, 5f, 0f), new Vector3(1f, 14f, 70f));
-        Wall("West", new Vector3(-e, 5f, 0f), new Vector3(1f, 14f, 70f));
+        Wall("North", new Vector3(0f, 5f, e), new Vector3(92f, 14f, 1f));
+        Wall("South", new Vector3(0f, 5f, -e), new Vector3(92f, 14f, 1f));
+        Wall("East", new Vector3(e, 5f, 0f), new Vector3(1f, 14f, 92f));
+        Wall("West", new Vector3(-e, 5f, 0f), new Vector3(1f, 14f, 92f));
     }
 
     // ------------------------------------------------------------------ lighting & mood
