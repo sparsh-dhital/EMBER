@@ -67,7 +67,8 @@ public class AudioManager : MonoBehaviour
     [Header("Mix")]
     [Range(0f, 1f)] public float masterVolume = 1f;
     [Range(0f, 1f)] public float windVolume = 0.35f;
-    [Range(0f, 1f)] public float insectsVolume = 0.3f;
+    [Tooltip("Kept low: this is a constant bed, and anything prominent here grates within a minute.")]
+    [Range(0f, 1f)] public float insectsVolume = 0.11f;
     [Range(0f, 1f)] public float droneVolume = 0.45f;
     [Range(0f, 1f)] public float choirVolume = 0.55f;
     [Range(0f, 1f)] public float crackleVolume = 0.18f;
@@ -150,6 +151,23 @@ public class AudioManager : MonoBehaviour
         GameEvents.StateChanged -= OnStateChanged;
         GameEvents.RadioCallStarted -= OnCallStarted;
         if (fuel) fuel.OnWarning -= OnFuelWarning;
+    }
+
+    void Start()
+    {
+        // GameState.MainMenu is the GameManager's initial field value, so SetState is never
+        // called for it and StateChanged never fires. Without this the menu music only ever
+        // began after returning to the menu from a run, never on a cold start.
+        var gm = GameManager.Instance;
+        if (gm == null || gm.State == GameState.MainMenu) StartMenuMusic();
+    }
+
+    void StartMenuMusic()
+    {
+        if (!menuMusic || !menuMusicClip) return;
+        menuMusicFadeTarget = menuMusicVolume;
+        if (menuMusic.clip != menuMusicClip) menuMusic.clip = menuMusicClip;
+        if (!menuMusic.isPlaying) menuMusic.Play();
     }
 
     AudioSource MakeSource(string name, bool loop, UnityEngine.Audio.AudioMixerGroup group = null)
@@ -270,11 +288,7 @@ public class AudioManager : MonoBehaviour
         if (s == GameState.MainMenu)
         {
             ending = false;
-            if (menuMusic && menuMusicClip)
-            {
-                menuMusicFadeTarget = menuMusicVolume;
-                if (!menuMusic.isPlaying) { menuMusic.clip = menuMusicClip; menuMusic.Play(); }
-            }
+            StartMenuMusic();
         }
         else if (s == GameState.Playing || s == GameState.PrayerEmergency)
         {

@@ -322,6 +322,10 @@ public static class EmberSceneBuilder
         a.prayerChoirLoop = L("loop_prayer_choir");
         a.lanternCrackleLoop = L("loop_lantern_crackle");
         a.shoreLoop = L("loop_shore");
+        // Menu music. Assigned here rather than only by the one-off import tool, which
+        // meant every scene rebuild silently cleared it and the title screen went quiet.
+        a.menuMusicClip = AssetDatabase.LoadAssetAtPath<AudioClip>(
+            EmberAudioGenerator.LoopDir + "/final audio.mp3");
     }
 
     // ------------------------------------------------------------------ cameras
