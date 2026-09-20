@@ -7230,7 +7230,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &81590157
 Transform:
   m_ObjectHideFlags: 0
@@ -24900,7 +24900,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &272764727
 Transform:
   m_ObjectHideFlags: 0
@@ -43193,7 +43193,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &428264892
 Transform:
   m_ObjectHideFlags: 0
@@ -45638,7 +45638,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &433384818
 Transform:
   m_ObjectHideFlags: 0
@@ -67078,7 +67078,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &758614246
 Transform:
   m_ObjectHideFlags: 0
@@ -74213,7 +74213,7 @@ MonoBehaviour:
   prayerChoirLoop: {fileID: 8300000, guid: 623f554eed65a164eb1f2966d2c819ec, type: 3}
   lanternCrackleLoop: {fileID: 8300000, guid: ac0dea6746350f64eab270c9b65403fa, type: 3}
   shoreLoop: {fileID: 8300000, guid: 8102903762bad3841aebc7917667a95c, type: 3}
-  menuMusicClip: {fileID: 0}
+  menuMusicClip: {fileID: 8300000, guid: 2560ad592b959dc479ecb944c121a796, type: 3}
   menuMusicVolume: 0.28
   fuel: {fileID: 8559177685508064096}
   player: {fileID: 8559177685508064095}
@@ -74224,7 +74224,7 @@ MonoBehaviour:
   ambienceGroup: {fileID: 0}
   masterVolume: 1
   windVolume: 0.35
-  insectsVolume: 0.3
+  insectsVolume: 0.11
   droneVolume: 0.45
   choirVolume: 0.55
   crackleVolume: 0.18
@@ -76387,7 +76387,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &857530068
 Transform:
   m_ObjectHideFlags: 0
@@ -116178,7 +116178,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1345076511
 Transform:
   m_ObjectHideFlags: 0
@@ -119669,7 +119669,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1409559274
 Transform:
   m_ObjectHideFlags: 0
@@ -155839,7 +155839,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1746860827
 Transform:
   m_ObjectHideFlags: 0
@@ -162751,7 +162751,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1964658328
 Transform:
   m_ObjectHideFlags: 0

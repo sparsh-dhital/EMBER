@@ -99,6 +99,12 @@ public class VampireAI : MonoBehaviour
 
     public void Spawn(Vector3 position)
     {
+        // Move the transform before anything wakes up. These are pooled, so the object is
+        // still sitting wherever it last died - which on an archipelago can be over open
+        // water. Enabling a NavMeshAgent there makes Unity log "Failed to create agent
+        // because it is not close enough to the NavMesh" before the Warp below can help.
+        transform.position = position;
+
         gameObject.SetActive(true);
         // A vampire that died had its agent and colliders switched off; pooling reuses the
         // same object, so put it back together before it walks again.
