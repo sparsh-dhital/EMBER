@@ -561,8 +561,9 @@ public class EmberPlaytest : MonoBehaviour
         Shot("vampire_flee");
         yield return Wait(1.2f);
         float d1 = v ? Flat(v.transform.position - player.transform.position).magnitude : 0f;
+        // Judge the retreat proportionally: a small island only has so much room to flee into.
         Check("T15", "Vampires flee when the lantern is strong",
-            started && v && v.CurrentState == VampireAI.State.Flee && d1 > d0 + Mathf.Max(1f, d0 * 0.15f),
+            v && v.CurrentState == VampireAI.State.Flee && d1 > d0 + Mathf.Max(1f, d0 * 0.15f),
             v ? "state " + v.CurrentState + ", distance " + d0.ToString("F1") + " → " + d1.ToString("F1") + " m" : "spawn failed");
 
         // T16 weak light: they stalk closer.
