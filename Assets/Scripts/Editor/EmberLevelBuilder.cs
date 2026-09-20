@@ -980,7 +980,11 @@ public static class EmberLevelBuilder
         Vector2 start = Islands[0].docks[0];
         var g = Group("Boat", root, new Vector3(start.x, SeaLevel, start.y), 0f);
 
-        var hull = Group("Hull", g, Vector3.zero, 0f);
+        // Group() places by WORLD position, so passing Vector3.zero left the whole hull - every
+        // visible plank of the boat - sitting at the world origin while the seat, lamp and
+        // boarding trigger stayed at the jetty. There was simply no boat to see.
+        var hull = Group("Hull", g, g.position, 0f);
+        hull.localPosition = Vector3.zero;
         // A simple clinker-built rowing boat: a flat bottom, flared sides, stem and stern.
         Box("Bottom", hull, new Vector3(0f, 0.02f, 0f), new Vector3(1.05f, 0.09f, 3.0f), "WoodDark", default, false);
         Box("SideL", hull, new Vector3(-0.56f, 0.24f, 0f), new Vector3(0.09f, 0.42f, 2.9f), "Wood", new Vector3(0f, 0f, 9f), false);

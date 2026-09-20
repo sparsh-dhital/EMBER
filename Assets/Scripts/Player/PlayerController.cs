@@ -92,6 +92,7 @@ public class PlayerController : MonoBehaviour
 
     CharacterController controller;
     Vector3 horizontalVelocity;
+    Vector3 slopeNormal = Vector3.up;
     float verticalSpeed;
     Vector3 impulse;
     float lockTimer;
@@ -160,10 +161,18 @@ public class PlayerController : MonoBehaviour
 
         CheckGround();
 
+        // Terrain normals flip from triangle to triangle as the capsule crosses them, and the
+        // slope projection below turns that flicker straight into vertical jitter - a step-by-step
+        // bobbing over ground that looks flat. Follow the normal instead of snapping to it.
+        // GroundNormal itself stays raw: the steep-slide test and the foot IK both want it crisp.
+        slopeNormal = IsGrounded
+            ? Vector3.Slerp(slopeNormal, GroundNormal, 1f - Mathf.Exp(-12f * dt)).normalized
+            : Vector3.up;
+
         // Walking straight up a slope costs a little speed.
         if (IsGrounded && SlopeAngle > 2f && inputAmount > 0.01f)
         {
-            Vector3 downhill = Vector3.ProjectOnPlane(Vector3.down, GroundNormal);
+            Vector3 downhill = Vector3.ProjectOnPlane(Vector3.down, slopeNormal);
             downhill.y = 0f;
             float uphill = downhill.sqrMagnitude > 0.0001f ? Mathf.Clamp01(-Vector3.Dot(desiredDir, downhill.normalized)) : 0f;
             targetSpeed *= 1f - uphillSlowdown * uphill * Mathf.Clamp01(SlopeAngle / controller.slopeLimit);
@@ -180,7 +189,7 @@ public class PlayerController : MonoBehaviour
         Vector3 planarMove = horizontalVelocity;
         bool tooSteep = IsGrounded && SlopeAngle > controller.slopeLimit + 1f;
         if (IsGrounded && !tooSteep && !IsJumping && planarMove.sqrMagnitude > 0.0001f)
-            planarMove = Vector3.ProjectOnPlane(planarMove, GroundNormal).normalized * planarMove.magnitude;
+            planarMove = Vector3.ProjectOnPlane(planarMove, slopeNormal).normalized * planarMove.magnitude;
         else if (tooSteep)
             planarMove += Vector3.ProjectOnPlane(Vector3.down, GroundNormal).normalized * steepSlideSpeed;
 
@@ -191,7 +200,12 @@ public class PlayerController : MonoBehaviour
         HandleJump(dt, tooSteep);
 
         float gravity = Physics.gravity.y * (verticalSpeed > 0f ? gravityMultiplier : fallGravityMultiplier);
-        if (IsGrounded && !tooSteep && !IsJumping && verticalSpeed <= 0f) verticalSpeed = -groundStickSpeed;
+        // planarMove is already projected along the surface, so climbing a slope carries a positive
+        // y of its own. Subtracting the full ground stick on top of that cancelled the climb and
+        // drove the capsule into the hill - the character juddered and crept up slopes it should
+        // walk. Only hold the body down when nothing is already carrying it up.
+        if (IsGrounded && !tooSteep && !IsJumping && verticalSpeed <= 0f)
+            verticalSpeed = planarMove.y > 0.01f ? 0f : -groundStickSpeed;
         else verticalSpeed = Mathf.Max(verticalSpeed + gravity * dt, -maxFallSpeed);
 
         impulse = Vector3.MoveTowards(impulse, Vector3.zero, 14f * dt);
