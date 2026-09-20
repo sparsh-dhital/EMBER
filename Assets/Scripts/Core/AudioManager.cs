@@ -322,6 +322,12 @@ public class AudioManager : MonoBehaviour
         Fade(crackle, dark || inMenu || ending || SuppressAmbience ? 0f : crackleVolume * (0.4f + 0.6f * fuel01), dt, 1f);
         Fade(shore, ShoreTarget(inMenu), dt, 0.35f);
 
+        // While the menu is up, keep insisting that the music plays. A Play() issued before the
+        // clip has finished loading in the background - or, in a browser build, before the audio
+        // context has been resumed by the first user gesture - is dropped silently, and the track
+        // then never starts at all. Retrying costs nothing once it is running.
+        if (menuMusic && inMenu && menuMusicFadeTarget > 0f && !menuMusic.isPlaying) StartMenuMusic();
+
         // Menu music fades driven by menuMusicFadeTarget (set in OnStateChanged / FadeMenuMusicRoutine).
         if (menuMusic && menuMusic.isPlaying)
             menuMusic.volume = Mathf.MoveTowards(menuMusic.volume, menuMusicFadeTarget * masterVolume, 0.6f * dt);

@@ -24,6 +24,18 @@ public class TouchControls : MonoBehaviour
     [Tooltip("Show the touch controls in the Editor and on desktop, for testing.")]
     public bool forceShow;
 
+    void Awake()
+    {
+        // Every one of these is contextual, but the UI builder authors them at full alpha so the
+        // layout is visible while it is being assembled. Start them hidden: otherwise the first
+        // frames of a touch build show PRAY - and its Om - along with TAKE and the sword buttons,
+        // all lit before Update has decided which of them the player has actually earned.
+        foreach (var g in new[] { group, interactButton, prayButton, attackButton, blockButton })
+            if (g) { g.alpha = 0f; g.blocksRaycasts = false; g.interactable = false; }
+        if (prayGlow) prayGlow.gameObject.SetActive(false);
+        if (blockGlow) blockGlow.gameObject.SetActive(false);
+    }
+
     void Update()
     {
         var gm = GameManager.Instance;
