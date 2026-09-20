@@ -15,7 +15,9 @@ public enum Sfx
     SwordPickup, SwordSwing, SwordHit, SwordBreak, VampireStagger, VampireDeath, LethalStrike,
     AmbientDistant, UiHover, Opening,
     // Repair-puzzle interface.
-    PuzzleOpen, PuzzleClose, PuzzleClick, PuzzleTone, PuzzleSolved, PuzzleFail, PuzzleHint
+    PuzzleOpen, PuzzleClose, PuzzleClick, PuzzleTone, PuzzleSolved, PuzzleFail, PuzzleHint,
+    // Boat and water.
+    BoatBoard, BoatDock, BoatRow, WaterLap, Seagull
 }
 
 [Serializable]
@@ -42,6 +44,8 @@ public class AudioManager : MonoBehaviour
     public AudioClip tensionDroneLoop;
     public AudioClip prayerChoirLoop;
     public AudioClip lanternCrackleLoop;
+    [Tooltip("Surf. Swells as the player nears the shore and while aboard the boat.")]
+    public AudioClip shoreLoop;
 
     [Header("Menu Music")]
     [Tooltip("Looping horror music played only on the main menu/dashboard.")]
@@ -50,6 +54,8 @@ public class AudioManager : MonoBehaviour
 
     [Header("References")]
     public LanternFuel fuel;
+    [Tooltip("Used to judge how close the player is to water.")]
+    public Transform player;
     public PlayerHealth health;
     public VampireSpawner vampires;
 
@@ -65,6 +71,9 @@ public class AudioManager : MonoBehaviour
     [Range(0f, 1f)] public float droneVolume = 0.45f;
     [Range(0f, 1f)] public float choirVolume = 0.55f;
     [Range(0f, 1f)] public float crackleVolume = 0.18f;
+    [Range(0f, 1f)] public float shoreVolume = 0.4f;
+    [Tooltip("Distance from the waterline at which surf is no longer audible.")]
+    public float shoreAudibleDistance = 26f;
     [Range(0f, 1f)] public float heartbeatVolume = 0.7f;
 
     [Header("Heartbeat (beats per minute)")]
@@ -81,7 +90,7 @@ public class AudioManager : MonoBehaviour
     AudioSource uiSource, oneShot2D;
     AudioSource[] pool;
     int poolIndex;
-    AudioSource wind, insects, drone, choir, crackle;
+    AudioSource wind, insects, drone, choir, crackle, shore;
     AudioSource menuMusic;
     float menuMusicFadeTarget;
     float nextBeat;
@@ -110,6 +119,7 @@ public class AudioManager : MonoBehaviour
         drone = MakeLoop("Drone", tensionDroneLoop, ambienceGroup);
         choir = MakeLoop("Choir", prayerChoirLoop, ambienceGroup);
         crackle = MakeLoop("Crackle", lanternCrackleLoop, ambienceGroup);
+        shore = MakeLoop("Shore", shoreLoop, ambienceGroup);
 
         // Menu music: starts silent; OnStateChanged will bring it up when the menu is shown.
         menuMusic = MakeLoop("MenuMusic", menuMusicClip, ambienceGroup);
@@ -296,12 +306,29 @@ public class AudioManager : MonoBehaviour
         Fade(drone, droneTarget, dt, 0.4f);
         Fade(choir, praying && !SuppressAmbience ? choirVolume : 0f, dt, praying ? 0.6f : 0.25f);
         Fade(crackle, dark || inMenu || ending || SuppressAmbience ? 0f : crackleVolume * (0.4f + 0.6f * fuel01), dt, 1f);
+        Fade(shore, ShoreTarget(inMenu), dt, 0.35f);
 
         // Menu music fades driven by menuMusicFadeTarget (set in OnStateChanged / FadeMenuMusicRoutine).
         if (menuMusic && menuMusic.isPlaying)
             menuMusic.volume = Mathf.MoveTowards(menuMusic.volume, menuMusicFadeTarget * masterVolume, 0.6f * dt);
 
         UpdateHeartbeat(inMenu, fuel01, dark);
+    }
+
+    // Surf rises as you approach the waterline and is loudest aboard the boat, which
+    // gives the crossings their own soundscape without a separate music cue.
+    float ShoreTarget(bool inMenu)
+    {
+        if (inMenu || SuppressAmbience || !shoreLoop || !player) return 0f;
+
+        float height = player.position.y - EmberIslands.SeaLevel;
+        // Aboard the boat the player sits essentially at the waterline.
+        if (height < 0.9f) return shoreVolume;
+
+        // Otherwise fall off with height above the sea, which stands in for distance
+        // inland far more cheaply than a nearest-shore search every frame.
+        float t = Mathf.Clamp01(1f - height / Mathf.Max(1f, shoreAudibleDistance * 0.22f));
+        return shoreVolume * t;
     }
 
     void UpdateHeartbeat(bool inMenu, float fuel01, bool dark)

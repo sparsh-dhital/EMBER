@@ -73,12 +73,14 @@ public class DialAlignmentPuzzle : MonoBehaviour, IPuzzle
             PuzzleWidgets.Sprite("Hub" + i, host, s.circle, s.dim, centre, new Vector2(16f, 16f));
 
             int index = i;
-            PuzzleWidgets.Button("Left" + i, host, s, "↺",
+            // Chevron sprites, not rotation-arrow glyphs: the UI font has no U+21BA/U+21BB,
+            // and a missing glyph renders as a box on every platform.
+            PuzzleWidgets.IconButton("Left" + i, host, s, s.chevron,
                 centre + new Vector2(-faceSize * 0.5f - 26f, -faceSize * 0.5f - 22f),
-                new Vector2(44f, 40f), () => Turn(index, -1), 22f);
-            PuzzleWidgets.Button("Right" + i, host, s, "↻",
+                new Vector2(44f, 40f), new Vector2(16f, 16f), 90f, () => Turn(index, -1));
+            PuzzleWidgets.IconButton("Right" + i, host, s, s.chevron,
                 centre + new Vector2(faceSize * 0.5f + 26f, -faceSize * 0.5f - 22f),
-                new Vector2(44f, 40f), () => Turn(index, +1), 22f);
+                new Vector2(44f, 40f), new Vector2(16f, 16f), -90f, () => Turn(index, +1));
 
             ring.readout = PuzzleWidgets.Label("Read" + i, host, s, "",
                 14f, s.dim, centre + new Vector2(0f, -faceSize * 0.5f - 24f),
@@ -132,7 +134,7 @@ public class DialAlignmentPuzzle : MonoBehaviour, IPuzzle
             {
                 // Shortest way round, so the readout tells you which button to press.
                 int offset = ring.position > ring.steps / 2 ? ring.position - ring.steps : ring.position;
-                ring.readout.text = ok ? "ALIGNED" : (offset > 0 ? "↺ " : "↻ ") + Mathf.Abs(offset);
+                ring.readout.text = ok ? "ALIGNED" : (offset > 0 ? "LEFT " : "RIGHT ") + Mathf.Abs(offset);
                 ring.readout.color = ok ? style.good : style.dim;
             }
         }

@@ -6,37 +6,87 @@ using UnityEngine.AI;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
-// Builds the single compact map (~60x60 m playable) around the radio centre:
-// terrain with a walkable hill, seven landmarks, forest, rocks, pickups, lighting, fog, post-processing and the NavMesh.
+// Builds the archipelago: three islands in a 100 x 100 m sea, linked by boat.
+//
+//   Ember Isle   - where you wash up. The radio centre on its hill, the cabin, the supply
+//                  cache. Largest and safest; the run begins and ends here.
+//   Shrine Isle  - the ruined shrine that holds the sacred locket, a wrecked truck and the
+//                  old watch post. The reason to leave home the first time.
+//   Hollow Isle  - dark forest and a crypt mouth. The last two radio parts, and the least
+//                  forgiving ground to be caught on with a dying lantern.
+//
+// Terrain, forest, rocks, pickups, lighting, fog, post-processing and the NavMesh are all
+// generated from the island definitions below, so moving an island moves everything with it.
 public static class EmberLevelBuilder
 {
-    // 100 x 100 metres of playable ground. The landmarks below sit on a ring roughly
-    // 30-38 m out from the radio hill, which leaves a deep forest belt around the edge
-    // for vampires to come out of.
     const float TerrainSize = 100f;
     const float TerrainHeight = 12f;
     const float BaseY = -1f;
     const string LevelMeshDir = "Assets/Art/Meshes/Level";
+
+    // Where the water sits, in world space. Anything below this is sea, and the NavMesh
+    // simply does not reach it - which is what keeps the vampires on your island.
+    public const float SeaLevel = 0.35f;
 
     static Terrain terrain;
     static System.Random rng;
 
     struct Pad { public Vector2 c; public float inner, outer; public Pad(float x, float z, float i, float o) { c = new Vector2(x, z); inner = i; outer = o; } }
 
-    static readonly Vector2 Centre = Vector2.zero;
-    static readonly Vector2 Cabin = new Vector2(-25f, 21f);
-    static readonly Vector2 Truck = new Vector2(24f, 24f);
-    static readonly Vector2 WatchPost = new Vector2(26f, -22f);
-    static readonly Vector2 Cave = new Vector2(-28f, -26f);
-    static readonly Vector2 Clearing = new Vector2(34f, -3f);
-    static readonly Vector2 Supplies = new Vector2(-34f, 2f);
-    static readonly Vector2 Chapel = new Vector2(2f, 37f);
-    static readonly Vector2 Windfall = new Vector2(-32f, -12f);
+    /// <summary>One island: a smooth radial lobe of land rising out of the sea.</summary>
+    public struct Island
+    {
+        public string name;
+        public Vector2 centre;
+        public float radius;      // where the shoreline sits
+        public float height;      // how far the crown rises above sea level
+        // Jetties, just off the shore. A hub island needs one facing each neighbour, so the
+        // crossing is never a matter of sailing over your own hill.
+        public Vector2[] docks;
+        public Island(string name, Vector2 centre, float radius, float height, params Vector2[] docks)
+        { this.name = name; this.centre = centre; this.radius = radius; this.height = height; this.docks = docks; }
 
+        public Vector2 PrimaryDock => docks != null && docks.Length > 0 ? docks[0] : centre;
+    }
+
+    // Spread far enough apart that a crossing is a real trip, close enough that the far
+    // shore is always visible from the water - you should never feel lost at sea.
+    // Each dock sits on the bearing towards the island it serves.
+    public static readonly Island[] Islands =
+    {
+        new Island("Ember Isle",  new Vector2(0f, 0f),    21f, 5.2f,
+                   new Vector2(16.0f, -15.1f),    // south jetty, for Hollow Isle
+                   new Vector2(-14.9f, 16.2f)),   // north jetty, for Shrine Isle
+        new Island("Shrine Isle", new Vector2(-33f, 36f), 12f, 4.2f,
+                   new Vector2(-23.9f, 26.1f)),
+        new Island("Hollow Isle", new Vector2(35f, -33f), 13f, 3.6f,
+                   new Vector2(25.2f, -23.7f)),
+    };
+
+    // Landmarks, each sitting on a named island.
+    // Every landmark sits inside its island's flat crown, never out on the beach slope.
+    static readonly Vector2 Centre = Vector2.zero;                       // radio centre, Ember Isle
+    static readonly Vector2 Cabin = new Vector2(-9f, 10f);               // Ember Isle
+    static readonly Vector2 Supplies = new Vector2(11f, 7f);             // Ember Isle
+    static readonly Vector2 Windfall = new Vector2(-10f, -9f);           // Ember Isle
+    static readonly Vector2 Chapel = new Vector2(-33f, 38f);             // Shrine Isle (locket)
+    static readonly Vector2 Truck = new Vector2(-37f, 32f);              // Shrine Isle
+    static readonly Vector2 WatchPost = new Vector2(-28f, 38f);          // Shrine Isle
+    static readonly Vector2 Clearing = new Vector2(36f, -36f);           // Hollow Isle
+    static readonly Vector2 Cave = new Vector2(31f, -29f);               // Hollow Isle
+
+    // Flattened building pads, one per landmark, so nothing sits on a slope.
     static readonly Pad[] Pads =
     {
-        new Pad(0f, 0f, 10f, 14f), new Pad(-17f, 14f, 5f, 8f), new Pad(16f, 16f, 5f, 8f), new Pad(17f, -15f, 3.5f, 6f),
-        new Pad(-17.5f, -15.5f, 2.5f, 4.5f), new Pad(23f, -2f, 5f, 8f), new Pad(-23f, 1f, 5f, 7f), new Pad(1f, 25f, 6f, 9f)
+        new Pad(0f, 0f, 9f, 13f),          // radio hill crown
+        new Pad(-9f, 10f, 4.5f, 7f),       // cabin
+        new Pad(11f, 7f, 4.5f, 6.5f),      // supplies
+        new Pad(-10f, -9f, 2.5f, 4.5f),    // windfall
+        new Pad(-33f, 38f, 5.5f, 8f),      // shrine
+        new Pad(-37f, 32f, 4f, 6f),        // truck
+        new Pad(-28f, 38f, 3.5f, 5.5f),    // watch post
+        new Pad(36f, -36f, 4.5f, 7f),      // forest clearing
+        new Pad(31f, -29f, 3f, 5f),        // crypt mouth
     };
 
     static List<Vector2[]> paths;
@@ -49,6 +99,8 @@ public static class EmberLevelBuilder
         public Transform[] spawnPoints;
         public Volume volume;
         public LocketPickup locket;
+        public BoatController boat;
+        public EmberIslands islandRegistry;
     }
 
     // ------------------------------------------------------------------ entry
@@ -78,6 +130,10 @@ public static class EmberLevelBuilder
         r.locket = BuildChapel(landmarks);
         BuildWindfall(landmarks);
 
+        BuildSea(root);
+        r.islandRegistry = lastRegistry;
+        BuildJetties(root);
+        r.boat = BuildBoat(root);
         BuildForest(root);
         BuildRocks(root);
         BuildFuel(root);
@@ -99,7 +155,14 @@ public static class EmberLevelBuilder
 
     static void BuildPaths()
     {
-        var targets = new[] { Cabin, Truck, new Vector2(16f, -16f), new Vector2(-23f, -19f), Clearing, Supplies, new Vector2(1f, 28f) };
+        // Worn tracks only make sense within an island. Each island gets its own little
+        // network radiating from wherever you step ashore.
+        var targets = new[]
+        {
+            Cabin, Supplies, Windfall, Islands[0].docks[0], Islands[0].docks[1],                  // Ember Isle
+            Chapel, Truck, WatchPost, Islands[1].docks[0],                   // Shrine Isle
+            Clearing, Cave, Islands[2].docks[0],                             // Hollow Isle
+        };
         paths = new List<Vector2[]>();
         var prng = new System.Random(99);
         foreach (var t in targets)
@@ -144,12 +207,74 @@ public static class EmberLevelBuilder
         return h;
     }
 
+    /// <summary>
+    /// Shapes the terrain into islands.
+    ///
+    /// Each island is a broad crown that eases down across a wide beach band and meets the
+    /// water exactly at its nominal radius, then keeps dropping into the channel beyond.
+    /// The beach is deliberately gentle: a steep shore would be unwalkable, would stop the
+    /// NavMesh reaching the waterline, and would leave the boat beaching against a cliff.
+    /// </summary>
+    static float ApplyIslands(float x, float z, float rawHeight)
+    {
+        var p = new Vector2(x, z);
+
+        // Strongest island influence at this point. 1 on the crown, 0 at the waterline.
+        float beach = 0f;
+        float crown = 0f;
+        foreach (var isle in Islands)
+        {
+            float d = Vector2.Distance(p, isle.centre);
+            // PlateauFraction of the radius is flat-ish crown; the rest is the beach slope.
+            float t = 1f - Mathf.SmoothStep(0f, 1f,
+                          Mathf.InverseLerp(isle.radius * PlateauFraction, isle.radius, d));
+            if (t * isle.height <= crown) continue;
+            beach = t;
+            crown = t * isle.height;
+        }
+
+        // How far below the waterline the seabed has fallen, outside every island.
+        float depth = 0f;
+        if (beach <= 0.001f)
+        {
+            float nearest = float.MaxValue;
+            foreach (var isle in Islands)
+                nearest = Mathf.Min(nearest, Vector2.Distance(p, isle.centre) / isle.radius);
+            depth = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1f, ChannelFalloff, nearest)) * ChannelDepth;
+        }
+
+        // Land rides on top of the waterline; the raw noise only textures the crown, so the
+        // beach itself stays smooth and predictable to walk and to land a boat on.
+        return SeaLevel + crown - depth + rawHeight * beach * 0.55f;
+    }
+
+    // How much of an island's radius is walkable crown before the beach begins.
+    const float PlateauFraction = 0.55f;
+    // How far out (in island radii) the channel reaches full depth, and how deep that is.
+    const float ChannelFalloff = 1.45f;
+    const float ChannelDepth = 2.2f;
+
+    /// <summary>The island a world point belongs to, or -1 when it is at sea.</summary>
+    public static int IslandAt(Vector2 p)
+    {
+        for (int i = 0; i < Islands.Length; i++)
+            if (Vector2.Distance(p, Islands[i].centre) <= Islands[i].radius) return i;
+        return -1;
+    }
+
+    /// <summary>True when there is walkable land above the waterline at this point.</summary>
+    static bool IsLand(Vector2 p) => Height(p.x, p.y) > SeaLevel + 0.25f;
+
     static float Height(float x, float z)
     {
-        float h = RawHeight(x, z);
+        // Island shape first, then flatten the building pads against the *shaped* ground.
+        // Flattening the raw noise first (as this used to) left a landmark on an island's
+        // beach slope sitting on a slope anyway, because the dome was added afterwards.
+        float h = ApplyIslands(x, z, RawHeight(x, z));
+
         foreach (var pad in Pads)
         {
-            float target = pad.c == Vector2.zero ? 0f : RawHeight(pad.c.x, pad.c.y);
+            float target = ApplyIslands(pad.c.x, pad.c.y, RawHeight(pad.c.x, pad.c.y));
             float d = Vector2.Distance(new Vector2(x, z), pad.c);
             float w = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(pad.inner, pad.outer, d));
             h = Mathf.Lerp(h, target, w);
@@ -158,10 +283,7 @@ public static class EmberLevelBuilder
         float pd = PathDistance(new Vector2(x, z));
         h -= 0.08f * (1f - Mathf.SmoothStep(0f, 1f, pd / 1.8f));
 
-        // A steep, unclimbable bank around the edge keeps the world compact.
-        float edge = Mathf.Max(Mathf.Abs(x), Mathf.Abs(z));
-        if (edge > 31f) h += Mathf.Min(9f, Mathf.Pow((edge - 31f) / 5f, 2f) * 6f);
-        return Mathf.Clamp(h, -0.9f, TerrainHeight - 1.1f);
+        return Mathf.Clamp(h, BaseY + 0.05f, TerrainHeight - 1.1f);
     }
 
     static Terrain BuildTerrain(Transform root)
@@ -712,12 +834,204 @@ public static class EmberLevelBuilder
 
     static bool IsClearArea(Vector2 p, float extra)
     {
-        if (p.magnitude < 12f + extra) return false;
-        float[] radii = { 6.5f, 6f, 7f, 7f, 6.5f, 6.5f, 8.5f, 5f };
+        // Nothing grows in the sea, on a beach, or on a jetty approach.
+        if (!IsLand(p)) return false;
+        foreach (var isle in Islands)
+        {
+            if (isle.docks == null) continue;
+            foreach (var d in isle.docks)
+                if (Vector2.Distance(p, d) < 6f + extra) return false;
+        }
+
+        if (p.magnitude < 11f + extra) return false;      // the radio hill crown stays open
+        float[] radii = { 6f, 6f, 6f, 7f, 6.5f, 6.5f, 8.5f, 5f };
         Vector2[] spots = { Cabin, Truck, WatchPost + new Vector2(-3f, 3f), Cave, Clearing, Supplies, Chapel, Windfall };
         for (int i = 0; i < spots.Length; i++) if (Vector2.Distance(p, spots[i]) < radii[i] + extra) return false;
         if (PathDistance(p) < 2.4f + extra) return false;
         return true;
+    }
+
+    // ------------------------------------------------------------------ sea
+
+    // A single large quad at the waterline, plus the island registry gameplay reads from.
+    // One flat plane rather than a mesh grid: the water is only ever seen at night through
+    // fog, so an animated normal map on a plane sells it for a fraction of the cost.
+    static void BuildSea(Transform root)
+    {
+        var group = Group("Sea", root, Vector3.zero, 0f);
+
+        var water = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        water.name = "Water";
+        water.transform.SetParent(group, false);
+        water.transform.position = new Vector3(0f, SeaLevel, 0f);
+        water.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        water.transform.localScale = new Vector3(TerrainSize + 40f, TerrainSize + 40f, 1f);
+        // The surface is decoration; the terrain underneath does the colliding.
+        Object.DestroyImmediate(water.GetComponent<Collider>());
+        water.GetComponent<Renderer>().sharedMaterial = EmberArt.Load("Water");
+        water.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+        SetStatic(water);
+
+        var scroll = water.AddComponent<WaterSurface>();
+        scroll.seaLevel = SeaLevel;
+
+        // Carve the sea out of the NavMesh. Without this the bake happily covers the seabed
+        // and the vampires simply walk between the islands, which would make the boat - and
+        // the whole idea of an island being a refuge - pointless.
+        var noSwim = new GameObject("SeaNavMeshBlocker");
+        noSwim.transform.SetParent(group, false);
+        float top = SeaLevel + 0.15f;      // stop the walkable surface right at the waterline
+        float bottom = BaseY - 2f;
+        noSwim.transform.position = new Vector3(0f, (top + bottom) * 0.5f, 0f);
+        var volume = noSwim.AddComponent<NavMeshModifierVolume>();
+        volume.size = new Vector3(TerrainSize + 40f, top - bottom, TerrainSize + 40f);
+        volume.center = Vector3.zero;
+        volume.area = 1;                   // 1 = Not Walkable
+        SetStatic(noSwim);
+
+        // The runtime island registry: the same numbers the terrain was generated from.
+        var registry = group.gameObject.AddComponent<EmberIslands>();
+        registry.seaLevel = SeaLevel;
+        registry.groundLayers = EmberLayers.World;
+        var data = new EmberIslands.IslandData[Islands.Length];
+        for (int i = 0; i < Islands.Length; i++)
+            data[i] = new EmberIslands.IslandData
+            {
+                name = Islands[i].name,
+                centre = Islands[i].centre,
+                radius = Islands[i].radius,
+                docks = Islands[i].docks,
+            };
+        registry.islands = data;
+        lastRegistry = registry;
+    }
+
+    static EmberIslands lastRegistry;
+
+    // ------------------------------------------------------------------ jetties
+
+    // A short timber jetty on each island, running from the beach out over the water so
+    // the boat always has an obvious place to be met.
+    static void BuildJetties(Transform root)
+    {
+        var group = Group("Jetties", root, Vector3.zero, 0f);
+
+        foreach (var isle in Islands)
+        foreach (var dock in isle.docks)
+        {
+            // Point the jetty from the island centre out towards its dock.
+            Vector2 outward = (dock - isle.centre).normalized;
+            float yaw = Mathf.Atan2(outward.x, outward.y) * Mathf.Rad2Deg;
+
+            // Start on dry land and walk outwards so the deck meets the beach cleanly.
+            Vector2 landfall = isle.centre + outward * (isle.radius - 2.5f);
+            var g = Group("Jetty_" + isle.name.Replace(" ", "") + "_" + group.childCount,
+                          group, new Vector3(landfall.x, 0f, landfall.y), yaw);
+
+            float length = Vector2.Distance(landfall, dock) + 1.5f;
+            int planks = Mathf.Max(4, Mathf.RoundToInt(length / 0.75f));
+
+            for (int i = 0; i < planks; i++)
+            {
+                float along = (i + 0.5f) / planks * length;
+                Vector2 world = landfall + outward * along;
+                // Deck sits just clear of the water, or on the sand where it crosses the beach.
+                float ground = Height(world.x, world.y);
+                float deck = Mathf.Max(SeaLevel + 0.45f, ground + 0.25f);
+                Box("Plank" + i, g, new Vector3(0f, deck, along), new Vector3(1.9f, 0.08f, 0.66f), "WoodDark");
+
+                // A pile every few planks, driven down into the seabed.
+                if (i % 3 != 0) continue;
+                float pileTop = deck - 0.06f;
+                float pileBottom = Mathf.Min(ground, SeaLevel) - 0.5f;
+                float pileHeight = Mathf.Max(0.4f, pileTop - pileBottom);
+                Cyl("PileL" + i, g, new Vector3(-0.82f, pileBottom + pileHeight * 0.5f, along),
+                    0.09f, pileHeight, "Bark", default, false);
+                Cyl("PileR" + i, g, new Vector3(0.82f, pileBottom + pileHeight * 0.5f, along),
+                    0.09f, pileHeight, "Bark", default, false);
+            }
+
+            // A lamp post at the head of the jetty: a landmark you can steer towards in the dark.
+            Vector2 head = dock;
+            float headDeck = SeaLevel + 0.45f;
+            var post = Group("Beacon", g, new Vector3(head.x, 0f, head.y), 0f);
+            post.localPosition = g.InverseTransformPoint(new Vector3(head.x, 0f, head.y));
+            Cyl("Post", post, new Vector3(0f, headDeck + 0.9f, 0f), 0.07f, 1.8f, "Bark", default, false);
+            var lampGo = Box("Lamp", post, new Vector3(0f, headDeck + 1.85f, 0f),
+                             new Vector3(0.22f, 0.26f, 0.22f), "Beacon", default, false);
+            var lamp = new GameObject("BeaconLight");
+            lamp.transform.SetParent(post, false);
+            lamp.transform.localPosition = new Vector3(0f, headDeck + 1.85f, 0f);
+            var light = lamp.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.72f, 0.36f);
+            light.range = 14f;
+            light.intensity = 3.2f;
+            light.shadows = LightShadows.None;   // decorative only; shadows here cost a lot on mobile
+            SetStatic(lamp);
+        }
+    }
+
+    // ------------------------------------------------------------------ boat
+
+    static BoatController BuildBoat(Transform root)
+    {
+        // Moored at the home island's jetty, ready to be taken.
+        Vector2 start = Islands[0].docks[0];
+        var g = Group("Boat", root, new Vector3(start.x, SeaLevel, start.y), 0f);
+
+        var hull = Group("Hull", g, Vector3.zero, 0f);
+        // A simple clinker-built rowing boat: a flat bottom, flared sides, stem and stern.
+        Box("Bottom", hull, new Vector3(0f, 0.02f, 0f), new Vector3(1.05f, 0.09f, 3.0f), "WoodDark", default, false);
+        Box("SideL", hull, new Vector3(-0.56f, 0.24f, 0f), new Vector3(0.09f, 0.42f, 2.9f), "Wood", new Vector3(0f, 0f, 9f), false);
+        Box("SideR", hull, new Vector3(0.56f, 0.24f, 0f), new Vector3(0.09f, 0.42f, 2.9f), "Wood", new Vector3(0f, 0f, -9f), false);
+        Box("Stem", hull, new Vector3(0f, 0.26f, 1.48f), new Vector3(0.62f, 0.46f, 0.12f), "Wood", new Vector3(16f, 0f, 0f), false);
+        Box("Stern", hull, new Vector3(0f, 0.26f, -1.48f), new Vector3(0.78f, 0.46f, 0.12f), "Wood", new Vector3(-10f, 0f, 0f), false);
+        Box("ThwartFore", hull, new Vector3(0f, 0.34f, 0.72f), new Vector3(1.0f, 0.07f, 0.26f), "WoodDark", default, false);
+        Box("ThwartMid", hull, new Vector3(0f, 0.34f, -0.15f), new Vector3(1.0f, 0.07f, 0.28f), "WoodDark", default, false);
+        // Oars shipped along the gunwale.
+        Cyl("OarL", hull, new Vector3(-0.38f, 0.40f, -0.1f), 0.035f, 2.2f, "Bark", new Vector3(88f, 6f, 0f), false);
+        Cyl("OarR", hull, new Vector3(0.38f, 0.40f, -0.1f), 0.035f, 2.2f, "Bark", new Vector3(88f, -6f, 0f), false);
+
+        // Where the player is parented while aboard. Group() places by world position, so
+        // the offset has to be applied locally afterwards or the seat lands off the boat.
+        var seat = Group("Seat", g, g.position, 0f);
+        seat.localPosition = new Vector3(0f, 0.42f, -0.15f);
+        seat.localRotation = Quaternion.identity;
+
+        // A lamp on the bow so the boat is findable from the shore at night.
+        var lampGo = new GameObject("BowLight");
+        lampGo.transform.SetParent(g, false);
+        lampGo.transform.localPosition = new Vector3(0f, 0.75f, 1.35f);
+        var bow = lampGo.AddComponent<Light>();
+        bow.type = LightType.Point;
+        bow.color = new Color(1f, 0.78f, 0.45f);
+        bow.range = 11f;
+        bow.intensity = 2.4f;
+        bow.shadows = LightShadows.None;
+
+        // Boarding trigger, on the interactable layer so the existing prompt finds it.
+        var trigger = new GameObject("BoardTrigger");
+        trigger.transform.SetParent(g, false);
+        trigger.layer = LayerMask.NameToLayer(EmberLayers.Interactable);
+        var col = trigger.AddComponent<BoxCollider>();
+        col.isTrigger = true;
+        col.size = new Vector3(2.6f, 2.2f, 4.2f);
+
+        var boat = g.gameObject.AddComponent<BoatController>();
+        boat.hull = hull;
+        boat.seat = seat;
+        boat.bowLight = lampGo.transform;
+        boat.wake = EmberFX.Motes(g, new Vector3(0f, 0.04f, -1.5f), new Color(0.75f, 0.85f, 0.95f),
+                                  8f, 1.2f, 0.05f, 40, "Wake");
+        boat.splash = EmberFX.Motes(g, new Vector3(0f, 0.1f, 1.3f), new Color(0.8f, 0.9f, 1f),
+                                    14f, 0.8f, 0.05f, 30, "Splash");
+
+        // The trigger collider is what the interactor raycasts against, so point it at the boat.
+        var proxy = trigger.AddComponent<InteractableProxy>();
+        proxy.target = boat;
+
+        return boat;
     }
 
     static void BuildForest(Transform root)
@@ -844,12 +1158,17 @@ public static class EmberLevelBuilder
     {
         var fuel = Group("FuelCans", root, Vector3.zero, 0f);
         // Near the start (safe), on the way to landmarks, at the supply cache, and a couple of risky ones.
+        // Spread across all three islands, weighted towards the two you have to sail to:
+        // running dry on the far shore is the situation the whole game is built around.
         Vector2[] spots =
         {
-            new Vector2(2.5f, 9f), new Vector2(-13f, 9f), new Vector2(14f, 14f), new Vector2(-31f, 5f),
-            new Vector2(-34f, -2f), new Vector2(13f, -13f), new Vector2(-14f, -28f), new Vector2(7f, 29f),
-            new Vector2(33f, 6f), new Vector2(-24f, 16f), new Vector2(28f, -14f), new Vector2(-4f, -17f),
-            new Vector2(20f, -30f), new Vector2(-33f, -18f),
+            // Ember Isle
+            new Vector2(3f, 8f), new Vector2(-8f, 6f), new Vector2(11f, 2f), new Vector2(-15f, 4f),
+            new Vector2(6f, -12f), new Vector2(-6f, -14f), new Vector2(16f, -8f),
+            // Shrine Isle
+            new Vector2(-31f, 32f), new Vector2(-37f, 37f), new Vector2(-29f, 41f), new Vector2(-35f, 29f),
+            // Hollow Isle
+            new Vector2(32f, -30f), new Vector2(39f, -32f), new Vector2(33f, -38f), new Vector2(38f, -37f),
         };
         for (int i = 0; i < spots.Length; i++)
         {
@@ -859,11 +1178,12 @@ public static class EmberLevelBuilder
         }
     }
 
+    // The sea is the real boundary now - you simply cannot walk off an island. These walls
+    // only stop the boat sailing off the edge of the terrain entirely.
     static void BuildBounds(Transform root)
     {
         var b = Group("WorldBounds", root, Vector3.zero, 0f);
-        // Just inside the terrain edge, so you hit trees before you hit the wall.
-        const float e = 44f;
+        const float e = 47f;
         void Wall(string n, Vector3 pos, Vector3 size)
         {
             var go = new GameObject(n);
@@ -872,10 +1192,10 @@ public static class EmberLevelBuilder
             go.AddComponent<BoxCollider>().size = size;
             SetStatic(go);
         }
-        Wall("North", new Vector3(0f, 5f, e), new Vector3(92f, 14f, 1f));
-        Wall("South", new Vector3(0f, 5f, -e), new Vector3(92f, 14f, 1f));
-        Wall("East", new Vector3(e, 5f, 0f), new Vector3(1f, 14f, 92f));
-        Wall("West", new Vector3(-e, 5f, 0f), new Vector3(1f, 14f, 92f));
+        Wall("North", new Vector3(0f, 4f, e), new Vector3(98f, 12f, 1f));
+        Wall("South", new Vector3(0f, 4f, -e), new Vector3(98f, 12f, 1f));
+        Wall("East", new Vector3(e, 4f, 0f), new Vector3(1f, 12f, 98f));
+        Wall("West", new Vector3(-e, 4f, 0f), new Vector3(1f, 12f, 98f));
     }
 
     // ------------------------------------------------------------------ lighting & mood

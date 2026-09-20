@@ -24,7 +24,10 @@ public class CircuitRoutingPuzzle : MonoBehaviour, IPuzzle
         public int mask;              // current connections, after rotation
         public int solutionMask;      // connections when correctly oriented
         public PuzzleButton button;
-        public TMP_Text glyph;
+        // One bar per direction plus a hub, drawn rather than typed: the UI font has no
+        // box-drawing glyphs, and bars stay crisp at any board size.
+        public UnityEngine.UI.Image[] arms;
+        public UnityEngine.UI.Image hub;
         public bool live;
         public bool locked;           // revealed by a hint, no longer rotatable
     }
@@ -76,8 +79,8 @@ public class CircuitRoutingPuzzle : MonoBehaviour, IPuzzle
                 var tile = t;
                 t.button = PuzzleWidgets.Button("T" + x + "_" + y, host, s, "", centre,
                     new Vector2(cell, cell), () => Rotate(tile), 30f);
-                t.glyph = t.button.Label;
-                t.glyph.fontSize = cell * 0.5f;
+                if (t.button.Label) t.button.Label.gameObject.SetActive(false);
+                BuildPipework(t, s, cell);
             }
         }
 
@@ -238,6 +241,29 @@ public class CircuitRoutingPuzzle : MonoBehaviour, IPuzzle
 
     // ---------------------------------------------------------------- play
 
+    // Four bars radiating from a central hub. Each is shown only when the tile connects
+    // that way, which makes any combination of connections drawable from one set of pieces.
+    void BuildPipework(Tile t, PuzzleStyle s, float cell)
+    {
+        float thickness = Mathf.Max(5f, cell * 0.14f);
+        float reach = cell * 0.5f;
+
+        t.hub = PuzzleWidgets.Sprite("Hub", t.button.transform, s.circle, s.dim,
+            Vector2.zero, new Vector2(thickness * 1.5f, thickness * 1.5f));
+
+        // Order matches the Up/Right/Down/Left bit order.
+        t.arms = new UnityEngine.UI.Image[4];
+        t.arms[0] = Arm(t, s, "Up", new Vector2(0f, reach * 0.5f), new Vector2(thickness, reach));
+        t.arms[1] = Arm(t, s, "Right", new Vector2(reach * 0.5f, 0f), new Vector2(reach, thickness));
+        t.arms[2] = Arm(t, s, "Down", new Vector2(0f, -reach * 0.5f), new Vector2(thickness, reach));
+        t.arms[3] = Arm(t, s, "Left", new Vector2(-reach * 0.5f, 0f), new Vector2(reach, thickness));
+    }
+
+    UnityEngine.UI.Image Arm(Tile t, PuzzleStyle s, string name, Vector2 centre, Vector2 size)
+    {
+        return PuzzleWidgets.Sprite(name, t.button.transform, s.bar, s.dim, centre, size, sliced: true);
+    }
+
     void Rotate(Tile t)
     {
         if (finished || t.locked) return;
@@ -299,8 +325,23 @@ public class CircuitRoutingPuzzle : MonoBehaviour, IPuzzle
             {
                 var t = grid[x, y];
                 if (t.live) liveCount++;
-                if (t.glyph) t.glyph.text = Glyph(t.mask);
-                if (t.glyph) t.glyph.color = t.live ? style.warm : style.dim;
+
+                // Show only the arms this tile currently connects on, and light the whole
+                // piece when current is actually reaching it.
+                Color wire = t.live ? style.warm : style.dim;
+                if (t.arms != null)
+                {
+                    int[] bits = { Up, Right, Down, Left };
+                    for (int a = 0; a < t.arms.Length; a++)
+                    {
+                        if (!t.arms[a]) continue;
+                        bool on = (t.mask & bits[a]) != 0;
+                        t.arms[a].enabled = on;
+                        t.arms[a].color = wire;
+                    }
+                }
+                if (t.hub) t.hub.color = wire;
+
                 if (t.button)
                     t.button.SetResting(t.locked
                         ? new Color(1f, 1f, 1f, 0.12f)
@@ -317,30 +358,6 @@ public class CircuitRoutingPuzzle : MonoBehaviour, IPuzzle
         {
             finished = true;
             Solved?.Invoke();
-        }
-    }
-
-    // Box-drawing glyphs, so each piece's connections are unmistakable at a glance.
-    static string Glyph(int mask)
-    {
-        switch (mask)
-        {
-            case Up | Down: return "│";
-            case Left | Right: return "─";
-            case Up | Right: return "└";
-            case Right | Down: return "┌";
-            case Down | Left: return "┐";
-            case Left | Up: return "┘";
-            case Up | Right | Down: return "├";
-            case Right | Down | Left: return "┬";
-            case Down | Left | Up: return "┤";
-            case Left | Up | Right: return "┴";
-            case Up | Right | Down | Left: return "┼";
-            case Up: return "╵";
-            case Right: return "╶";
-            case Down: return "╷";
-            case Left: return "╴";
-            default: return "·";
         }
     }
 

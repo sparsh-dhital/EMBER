@@ -96,6 +96,41 @@ public static class PuzzleWidgets
         btn.Init(bg, label, onClick);
         return btn;
     }
+
+    /// <summary>
+    /// A cell whose face is a rotated sprite rather than text. Used wherever a board needs a
+    /// symbol the UI font has no glyph for - arrows, chevrons, circuit pipework - so nothing
+    /// depends on the typeface shipping an exotic character.
+    /// </summary>
+    public static PuzzleButton IconButton(string name, Transform parent, PuzzleStyle s, Sprite icon,
+                                          Vector2 centre, Vector2 size, Vector2 iconSize,
+                                          float iconRotation, Action onClick, Color? iconColour = null)
+    {
+        var btn = Button(name, parent, s, string.Empty, centre, size, onClick);
+        if (btn.Label) btn.Label.gameObject.SetActive(false);
+
+        var img = Sprite("Icon", btn.transform, icon, iconColour ?? s.cream, Vector2.zero, iconSize);
+        img.transform.localRotation = Quaternion.Euler(0f, 0f, iconRotation);
+        return btn;
+    }
+
+    /// <summary>
+    /// A row of small dots, for progress readouts. Returns the images so the caller can
+    /// recolour them; avoids needing filled/hollow circle glyphs in the font.
+    /// </summary>
+    public static Image[] DotRow(string name, Transform parent, PuzzleStyle s, int count,
+                                 Vector2 centre, float spacing, float diameter)
+    {
+        var holder = Rect(name, parent);
+        Place(holder, centre, new Vector2(spacing * count, diameter + 4f));
+
+        var dots = new Image[count];
+        float originX = -(count - 1) * spacing * 0.5f;
+        for (int i = 0; i < count; i++)
+            dots[i] = Sprite("Dot" + i, holder, s.circle, s.dim,
+                             new Vector2(originX + i * spacing, 0f), new Vector2(diameter, diameter));
+        return dots;
+    }
 }
 
 /// <summary>

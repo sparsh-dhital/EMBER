@@ -63,6 +63,11 @@ public static class EmberAudioGenerator
         Save(SfxDir, "puzzle_solved", PuzzleSolved());
         Save(SfxDir, "puzzle_fail", PuzzleFail());
         Save(SfxDir, "puzzle_hint", PuzzleHint());
+        // Boat and shoreline.
+        Save(SfxDir, "boat_board", BoatBoard());
+        Save(SfxDir, "boat_dock", BoatDock());
+        for (int i = 0; i < 3; i++) Save(SfxDir, "boat_row_" + i, BoatRow(i));
+        for (int i = 0; i < 2; i++) Save(SfxDir, "water_lap_" + i, WaterLap(i));
         Save(SfxDir, "victory", Victory());
         Save(SfxDir, "defeat", Defeat());
         Save(SfxDir, "heartbeat", Heartbeat());
@@ -73,6 +78,7 @@ public static class EmberAudioGenerator
         Save(LoopDir, "loop_prayer_choir", Loop(8f, Choir));
         Save(LoopDir, "loop_lantern_crackle", Loop(5f, Crackle));
         Save(LoopDir, "loop_radio_static", Loop(4f, Static));
+        Save(LoopDir, "loop_shore", Loop(9f, Shore));
 
         AssetDatabase.Refresh();
         ConfigureImport();
@@ -883,6 +889,103 @@ public static class EmberAudioGenerator
             o[i] = (a + b) * 0.42f;
         }
         return Norm(o, 0.6f);
+    }
+
+    // ------------------------------------------------------------------ boat and water
+
+    // Stepping into a wooden boat: a hollow knock on the hull, then water slapping as she
+    // takes the weight and settles.
+    static float[] BoatBoard()
+    {
+        int n = S(1.1f);
+        var o = new float[n];
+        float low = 0f, band = 0f, lp = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float noise = N();
+            // Hollow wooden thump - a low resonance, not a thud.
+            float knock = (Mathf.Sin(Ph(132f, t)) + 0.4f * Mathf.Sin(Ph(198f, t))) * Env(t, 0.002f, 0.09f);
+            // Water displaced by the weight.
+            Bandpass(ref low, ref band, noise, 900f, 1.1f);
+            float slosh = band * Env(t - 0.08f, 0.05f, 0.3f) * 0.8f;
+            lp += (noise - lp) * 0.02f;
+            o[i] = knock * 0.8f + slosh + lp * 0.25f * Env(t - 0.1f, 0.08f, 0.35f);
+        }
+        return Norm(o, 0.75f);
+    }
+
+    // Grounding on shingle: a scraping rush, then the hull settling still.
+    static float[] BoatDock()
+    {
+        int n = S(1.3f);
+        var o = new float[n];
+        float low = 0f, band = 0f, hp = 0f, prev = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float noise = N();
+            hp = 0.9f * (hp + noise - prev); prev = noise;
+            // Gravel dragging under the keel, thinning as she slows.
+            Bandpass(ref low, ref band, hp, Mathf.Lerp(2600f, 700f, Mathf.Clamp01(t / 0.5f)), 1.6f);
+            float scrape = band * Env(t, 0.02f, 0.28f) * 1.3f;
+            float settle = Mathf.Sin(Ph(118f, t)) * Env(t - 0.45f, 0.01f, 0.12f) * 0.5f;
+            o[i] = scrape + settle;
+        }
+        return Norm(o, 0.7f);
+    }
+
+    // One oar stroke: the catch, the pull, and the drip as the blade comes clear.
+    static float[] BoatRow(int v)
+    {
+        int n = S(1.0f);
+        var o = new float[n];
+        float low = 0f, band = 0f;
+        float pitch = 1f + v * 0.08f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            // Rowlock creak.
+            float creak = Mathf.Sin(Ph(310f * pitch * (1f + t * 0.4f), t)) * Env(t, 0.02f, 0.07f) * 0.3f;
+            // The blade pulling through water.
+            Bandpass(ref low, ref band, N(), 1400f * pitch, 1.3f);
+            float pull = band * Env(t - 0.06f, 0.06f, 0.18f) * 1.1f;
+            // A drip off the blade at the end of the stroke.
+            float drip = Mathf.Sin(Ph(1900f * pitch * (1f - t * 0.3f), t)) * Env(t - 0.42f, 0.002f, 0.05f) * 0.25f;
+            o[i] = creak + pull + drip;
+        }
+        return Norm(o, 0.6f);
+    }
+
+    // A single wave turning over on the shore.
+    static float[] WaterLap(int v)
+    {
+        int n = S(1.6f);
+        var o = new float[n];
+        float low = 0f, band = 0f, lp = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)Rate;
+            float noise = N();
+            // Swells in, breaks, then drains back through the shingle.
+            float swell = Env(t, 0.35f, 0.5f);
+            Bandpass(ref low, ref band, noise, Mathf.Lerp(600f, 2800f, Mathf.Clamp01(t / 0.9f)), 0.9f + v * 0.3f);
+            lp += (noise - lp) * 0.03f;
+            o[i] = (band * 1.2f + lp * 0.5f) * swell;
+        }
+        return Norm(o, 0.5f);
+    }
+
+    // Shoreline ambience: overlapping swells with no obvious period, so it never
+    // announces its loop point.
+    static float Shore(float t, int i)
+    {
+        float v = 0f;
+        // Three waves at mutually irrational-ish rates.
+        v += Mathf.Sin(t * 0.37f * Mathf.PI * 2f) * 0.5f + 0.5f;
+        v *= 0.6f + 0.4f * (Mathf.Sin(t * 0.19f * Mathf.PI * 2f) * 0.5f + 0.5f);
+        v *= 0.7f + 0.3f * (Mathf.Sin(t * 0.11f * Mathf.PI * 2f) * 0.5f + 0.5f);
+        return N() * 0.42f * v;
     }
 
     static int S(float seconds) => Mathf.CeilToInt(seconds * Rate);

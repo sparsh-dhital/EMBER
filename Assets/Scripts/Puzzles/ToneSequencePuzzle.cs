@@ -20,7 +20,7 @@ public class ToneSequencePuzzle : MonoBehaviour, IPuzzle
     PuzzleButton[] keys;
     PuzzleStyle style;
     TMP_Text status;
-    TMP_Text progress;
+    UnityEngine.UI.Image[] progressDots;
 
     readonly List<int> sequence = new List<int>();
     int inputIndex;
@@ -45,8 +45,9 @@ public class ToneSequencePuzzle : MonoBehaviour, IPuzzle
         PuzzleWidgets.Label("Prompt", host, s, "LISTEN, THEN REPEAT", 16f, s.dim,
             new Vector2(0f, 128f), new Vector2(560f, 22f));
 
-        progress = PuzzleWidgets.Label("Progress", host, s, "", 30f, s.warm,
-            new Vector2(0f, 78f), new Vector2(560f, 40f), TextAlignmentOptions.Center, bold: true);
+        // Drawn dots rather than filled/hollow circle glyphs, which the UI font lacks.
+        progressDots = PuzzleWidgets.DotRow("Progress", host, s, targetLength,
+            new Vector2(0f, 78f), 34f, 16f);
 
         keys = new PuzzleButton[keyCount];
         float spacing = 104f;
@@ -169,17 +170,17 @@ public class ToneSequencePuzzle : MonoBehaviour, IPuzzle
 
     void UpdateProgress()
     {
-        if (!progress) return;
-        // Dots for what is still to come, filled marks for what has been entered.
-        var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < sequence.Count; i++)
+        if (progressDots == null) return;
+        // Drawn dots rather than filled/hollow circle glyphs, which the UI font lacks:
+        // green for steps already entered, warm for a step a hint revealed, dim for the rest.
+        for (int i = 0; i < progressDots.Length && i < sequence.Count; i++)
         {
-            if (i < inputIndex) sb.Append('●');
-            else if (i <= revealUpTo) sb.Append(KeyNames[sequence[i]]);
-            else sb.Append('○');
-            sb.Append(' ');
+            if (!progressDots[i]) continue;
+            progressDots[i].color = i < inputIndex ? style.good
+                                  : i <= revealUpTo ? style.warm
+                                  : style.dim;
+            progressDots[i].transform.localScale = Vector3.one * (i < inputIndex ? 1f : 0.72f);
         }
-        progress.text = sb.ToString().TrimEnd();
     }
 
     public bool RevealHint()

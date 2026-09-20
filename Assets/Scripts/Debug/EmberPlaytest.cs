@@ -135,6 +135,25 @@ public class EmberPlaytest : MonoBehaviour
 
     static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
 
+    // Nudges a probe position back onto walkable ground. The world is an archipelago now,
+    // so a point "19 m ahead" can easily be open sea, where a vampire cannot be spawned.
+    static Vector3 LandNear(Vector3 wanted)
+    {
+        if (UnityEngine.AI.NavMesh.SamplePosition(wanted, out var direct, 3f, UnityEngine.AI.NavMesh.AllAreas))
+            return direct.position;
+
+        // Walk back towards the island centre until we find navmesh.
+        int isle = EmberIslands.IslandAt(wanted);
+        Vector3 inward = isle >= 0 ? wanted : Vector3.zero;
+        for (float t = 0.15f; t <= 1f; t += 0.15f)
+        {
+            Vector3 probe = Vector3.Lerp(wanted, inward, t);
+            if (UnityEngine.AI.NavMesh.SamplePosition(probe, out var hit, 4f, UnityEngine.AI.NavMesh.AllAreas))
+                return hit.position;
+        }
+        return wanted;
+    }
+
     static Vector3 GroundAt(Vector3 p, float fromHeight = 20f)
     {
         int mask = ~((1 << LayerMask.NameToLayer("Player")) | (1 << LayerMask.NameToLayer("Enemy")) | (1 << LayerMask.NameToLayer("Interactable")));
@@ -193,7 +212,18 @@ public class EmberPlaytest : MonoBehaviour
 
     IEnumerator InteractWith(Transform target)
     {
+        // Stand on whatever surface the item is resting on, not on the ground beneath it.
+        // Several pickups sit on raised decks and crates; approaching at terrain height
+        // leaves them out of the interactor's reach even though a player could walk up.
         Vector3 stand = ApproachPoint(target.position, 1.2f);
+        if (Physics.Raycast(target.position + Vector3.up * 0.3f, Vector3.down,
+                            out RaycastHit surface, 4f, EmberLayers.World, QueryTriggerInteraction.Ignore))
+        {
+            // Only lift if the item really is on a platform above the terrain.
+            float terrain = EmberIslands.SeabedHeight(target.position);
+            if (surface.point.y > terrain + 0.6f) stand.y = surface.point.y + 0.1f;
+        }
+
         Teleport(stand, YawTo(stand, target.position));
         yield return Wait(0.4f);
         InputReader.Instance.PressTouchInteract();
@@ -214,6 +244,12 @@ public class EmberPlaytest : MonoBehaviour
         Bind();
         report.Add("EMBER automated playtest — " + System.DateTime.Now);
         if (!gm) { Check("T0", "GameManager present", false, "no GameManager in scene"); Finish(); yield break; }
+
+        // Pin the suite to Normal. Difficulty is persisted in PlayerPrefs, so without this a
+        // previous run that ended on Easy silently rebalances every later gameplay assertion
+        // (125 HP, weaker vampires) and the numbers stop being comparable between runs.
+        playerDifficulty = GameConfig.Selected;
+        GameConfig.Selected = Difficulty.Normal;
 
         if (gm.State == GameState.MainMenu) { Shot("title"); gm.StartGame(); }
         InputReader.SetCursorLocked(false);
@@ -352,9 +388,10 @@ public class EmberPlaytest : MonoBehaviour
         bool stairsOk = player.transform.position.y >= deckY - 0.3f;
         Shot("watchpost_stairs");
 
-        // T4c walking up the hill slope stays grounded.
-        Vector3 hillStart = GroundAt(new Vector3(8f, 0f, -17f));
-        Teleport(hillStart, 80f);
+        // T4c walking up the hill slope stays grounded. The radio hill on Ember Isle is the
+        // only real slope now, so start out on its flank and walk in towards the crown.
+        Vector3 hillStart = GroundAt(new Vector3(0f, 0f, -20f));
+        Teleport(hillStart, 0f);
         yield return Wait(0.3f);
         int frames = 0, grounded = 0;
         float y0 = player.transform.position.y;
@@ -507,25 +544,29 @@ public class EmberPlaytest : MonoBehaviour
 
         // T15 strong light: they flee.
         Vector3 fwd = Flat(Camera.main.transform.forward).normalized;
-        var v = spawner.DebugSpawnAt(player.transform.position + fwd * 7f);
+        var v = spawner.DebugSpawnAt(LandNear(player.transform.position + fwd * 7f));
         float d0 = v ? Flat(v.transform.position - player.transform.position).magnitude : 0f;
         yield return Wait(0.6f);
         Shot("vampire_flee");
         yield return Wait(1.2f);
         float d1 = v ? Flat(v.transform.position - player.transform.position).magnitude : 0f;
-        Check("T15", "Vampires flee when the lantern is strong", v && v.CurrentState == VampireAI.State.Flee && d1 > d0 + 2f,
+        Check("T15", "Vampires flee when the lantern is strong",
+            started && v && v.CurrentState == VampireAI.State.Flee && d1 > d0 + Mathf.Max(1f, d0 * 0.15f),
             v ? "state " + v.CurrentState + ", distance " + d0.ToString("F1") + " → " + d1.ToString("F1") + " m" : "spawn failed");
 
         // T16 weak light: they stalk closer.
         fuel.DebugSetFraction(0.4f);
         BanishAll();
         yield return Wait(2.8f);
-        v = spawner.DebugSpawnAt(player.transform.position + fwd * 19f);
+        v = spawner.DebugSpawnAt(LandNear(player.transform.position + fwd * 15f));
         d0 = v ? Flat(v.transform.position - player.transform.position).magnitude : 0f;
         yield return Wait(4.5f);
         d1 = v ? Flat(v.transform.position - player.transform.position).magnitude : 0f;
         Shot("vampire_stalk");
-        Check("T16", "Vampires approach when the lantern is weak", v && v.CurrentState == VampireAI.State.Stalk && d1 < d0 - 4f,
+        // The islands are finite, so judge the approach as a fraction of the opening gap
+        // rather than a fixed number of metres that a small island cannot provide.
+        Check("T16", "Vampires approach when the lantern is weak",
+            v && v.CurrentState == VampireAI.State.Stalk && d1 < d0 - Mathf.Max(2f, d0 * 0.25f),
             v ? "band " + fuel.Band + ", state " + v.CurrentState + ", distance " + d0.ToString("F1") + " → " + d1.ToString("F1") + " m" : "spawn failed");
 
         // T14 + T17 flame out: lantern extinguishes and they turn aggressive.
@@ -1006,6 +1047,7 @@ public class EmberPlaytest : MonoBehaviour
     }
 
     string solveError;
+    Difficulty playerDifficulty = Difficulty.Normal;
 
     IEnumerator PauseTest()
     {
@@ -1094,8 +1136,8 @@ public class EmberPlaytest : MonoBehaviour
         Teleport(arena, 0f);
         fuel.DebugSetFraction(0f);
         yield return Wait(0.5f);
-        spawner.DebugSpawnAt(player.transform.position + Vector3.forward * 3f);
-        spawner.DebugSpawnAt(player.transform.position + Vector3.right * 3f);
+        spawner.DebugSpawnAt(LandNear(player.transform.position + Vector3.forward * 3f));
+        spawner.DebugSpawnAt(LandNear(player.transform.position + Vector3.right * 3f));
         float t = 0f;
         while (gm.State != GameState.Defeat && t < 20f) { t += Time.unscaledDeltaTime; yield return null; }
         yield return Wait(2.5f);
@@ -1122,6 +1164,7 @@ public class EmberPlaytest : MonoBehaviour
         NoKeys();
         InputReader.Instance.SetTouchMove(Vector2.zero);
         Time.timeScale = 1f;
+        GameConfig.Selected = playerDifficulty;    // leave the player's own setting as we found it
         InputSystem.settings.editorInputBehaviorInPlayMode = savedEditorBehaviour;
         InputSystem.settings.backgroundBehavior = savedBackground;
 #if UNITY_EDITOR

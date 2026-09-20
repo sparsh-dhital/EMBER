@@ -237,6 +237,30 @@ public static class EmberArt
         EditorUtility.SetDirty(mat);
     }
 
+    // The sea. Dark, smooth and quite reflective, so it picks up the moon and the lantern
+    // rather than being a flat grey sheet. WaterSurface scrolls its offsets at runtime.
+    static void WaterMaterial()
+    {
+        var mat = GetOrCreate("Water", Shader.Find("Universal Render Pipeline/Lit"));
+        mat.SetColor("_BaseColor", new Color(0.035f, 0.055f, 0.07f, 1f));
+        mat.SetFloat("_Smoothness", 0.93f);
+        mat.SetFloat("_Metallic", 0.1f);
+
+        // A noise texture doing duty as a normal map: enough surface break-up to catch
+        // highlights, without shipping a bespoke water normal.
+        var noise = AssetDatabase.LoadAssetAtPath<Texture2D>(TexDir + "/T_GroundNoise.png");
+        if (noise)
+        {
+            mat.SetTexture("_BumpMap", noise);
+            mat.EnableKeyword("_NORMALMAP");
+            mat.SetFloat("_BumpScale", 0.25f);
+            mat.SetTextureScale("_BaseMap", new Vector2(14f, 14f));
+            mat.SetTextureScale("_BumpMap", new Vector2(9f, 9f));
+        }
+        mat.enableInstancing = true;
+        EditorUtility.SetDirty(mat);
+    }
+
     // ------------------------------------------------------------------ Om glyph
 
     // Coverage of the Om symbol at normalised point p, antialiased against the pixel size.
@@ -494,6 +518,7 @@ public static class EmberArt
         // The Om plate: an alpha-cut, self-lit sheet so the glyph reads as burning light
         // rather than a painted board. PrayerSystem drives its emission colour at runtime.
         OmMaterial();
+        WaterMaterial();
         Emissive(holy, new Color(6f, 4.6f, 2.6f));
 
         // Particles (additive, soft).

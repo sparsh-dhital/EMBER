@@ -81,10 +81,10 @@ public class SignalCalibrationPuzzle : MonoBehaviour, IPuzzle
             d.fill = fill;
 
             int index = i;
-            PuzzleWidgets.Button(d.name + "Down", host, s, "‹", new Vector2(-150f, y),
-                new Vector2(40f, 40f), () => Nudge(index, -1), 26f);
-            PuzzleWidgets.Button(d.name + "Up", host, s, "›", new Vector2(172f, y),
-                new Vector2(40f, 40f), () => Nudge(index, +1), 26f);
+            PuzzleWidgets.IconButton(d.name + "Down", host, s, s.chevron, new Vector2(-150f, y),
+                new Vector2(40f, 40f), new Vector2(14f, 14f), 90f, () => Nudge(index, -1));
+            PuzzleWidgets.IconButton(d.name + "Up", host, s, s.chevron, new Vector2(172f, y),
+                new Vector2(40f, 40f), new Vector2(14f, 14f), -90f, () => Nudge(index, +1));
 
             d.readout = PuzzleWidgets.Label(d.name + "Read", host, s, "", 15f, s.dim,
                 new Vector2(238f, y), new Vector2(80f, 22f), TextAlignmentOptions.Right);

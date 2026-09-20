@@ -309,12 +309,19 @@ public static class EmberSceneBuilder
             E(Sfx.PuzzleSolved, 0.85f, 0f, "puzzle_solved"),
             E(Sfx.PuzzleFail, 0.6f, 0.03f, "puzzle_fail"),
             E(Sfx.PuzzleHint, 0.5f, 0f, "puzzle_hint"),
+
+            // Boat and shoreline.
+            E(Sfx.BoatBoard, 0.8f, 0.04f, "boat_board"),
+            E(Sfx.BoatDock, 0.85f, 0.05f, "boat_dock"),
+            E(Sfx.BoatRow, 0.5f, 0.08f, "boat_row_0", "boat_row_1", "boat_row_2"),
+            E(Sfx.WaterLap, 0.55f, 0.12f, "water_lap_0", "water_lap_1"),
         };
         a.windLoop = L("loop_wind");
         a.insectsLoop = L("loop_insects");
         a.tensionDroneLoop = L("loop_tension_drone");
         a.prayerChoirLoop = L("loop_prayer_choir");
         a.lanternCrackleLoop = L("loop_lantern_crackle");
+        a.shoreLoop = L("loop_shore");
     }
 
     // ------------------------------------------------------------------ cameras
@@ -490,6 +497,8 @@ public static class EmberSceneBuilder
         s.audio.fuel = p.fuel;
         s.audio.health = p.health;
         s.audio.vampires = s.spawner;
+        // Shore ambience swells with the player's proximity to the waterline.
+        s.audio.player = p.go.transform;
 
         s.spawner.player = p.go.transform;
         s.spawner.playerHealth = p.health;
