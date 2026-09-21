@@ -74,7 +74,7 @@ public static class EmberCharacterBuilder
         Part("BeanieRim", PrimitiveType.Cylinder, head, new Vector3(0f, 0.14f, 0f), new Vector3(0.23f, 0.025f, 0.24f), beanie);
 
         Transform handR = BuildArm("R", chest, 1f, coat, skin);
-        BuildArm("L", chest, -1f, coat, skin);
+        Transform handL = BuildArm("L", chest, -1f, coat, skin);
         BuildLeg("L", hips, -1f, pants, boots);
         BuildLeg("R", hips, 1f, pants, boots);
 
@@ -84,6 +84,9 @@ public static class EmberCharacterBuilder
         p.animator.runtimeAnimatorController = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
 
         BuildLantern(p, handR, player.transform);
+        BuildSword(handL);
+        
+        if (!player.GetComponent<SwordController>()) player.AddComponent<SwordController>();
 
         p.cameraTarget = Bone("CameraTarget", player.transform, new Vector3(0f, 1.55f, 0f));
         BuildPrayerVisuals(p, player.transform);
@@ -175,6 +178,28 @@ public static class EmberCharacterBuilder
 
         var sway = root.gameObject.AddComponent<LanternSway>();
         sway.yawReference = playerRoot;
+    }
+
+    // ------------------------------------------------------------------ sword
+
+    static void BuildSword(Transform hand)
+    {
+        Material metal = EmberArt.Load("Metal"), wood = EmberArt.Load("Wood");
+
+        var root = Bone("Sword", hand, new Vector3(-0.02f, -0.06f, -0.05f));
+        // Rotate so it points mostly forward/down, relative to hand
+        root.localRotation = Quaternion.Euler(60f, 0f, 90f);
+
+        // Handle
+        Part("Handle", PrimitiveType.Cylinder, root, new Vector3(0f, 0f, 0f), new Vector3(0.015f, 0.08f, 0.015f), wood);
+        // Pommel
+        Part("Pommel", PrimitiveType.Sphere, root, new Vector3(0f, -0.08f, 0f), new Vector3(0.025f, 0.025f, 0.025f), metal);
+        // Guard
+        Part("Guard", PrimitiveType.Cube, root, new Vector3(0f, 0.08f, 0f), new Vector3(0.1f, 0.015f, 0.03f), metal);
+        // Blade
+        Part("Blade", PrimitiveType.Cube, root, new Vector3(0f, 0.35f, 0f), new Vector3(0.04f, 0.26f, 0.008f), metal);
+        // Tip (to make it somewhat pointed)
+        Part("Tip", PrimitiveType.Cylinder, root, new Vector3(0f, 0.6f, 0f), new Vector3(0.04f, 0.02f, 0.008f), metal);
     }
 
     // ------------------------------------------------------------------ prayer

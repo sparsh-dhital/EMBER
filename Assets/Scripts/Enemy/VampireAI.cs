@@ -55,6 +55,8 @@ public class VampireAI : MonoBehaviour
 
     public State CurrentState { get; private set; } = State.Hidden;
     public float Aggression { get; private set; }
+    
+    public float health = 30f;
 
     NavMeshAgent agent;
     VampireSpawner spawner;
@@ -101,9 +103,31 @@ public class VampireAI : MonoBehaviour
         nextThink = 0f;
         cooldownUntil = Time.time + 1f;
         banishTimer = 0f;
+        health = 30f;
         if (visual) visual.ResetVisual();
         Vector3 facing = player ? Flat(player.position - position) : Vector3.zero;
         if (facing.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(facing);
+    }
+
+    public void TakeDamage(float amount)
+    {
+        if (CurrentState == State.Banished) return;
+        
+        health -= amount;
+        if (visual) visual.Animate(CurrentState, 0f, 1f); // Brief twitch/aggression
+        
+        if (health <= 0f)
+        {
+            Banish();
+        }
+        else
+        {
+            // Back off slightly when hit
+            agent.isStopped = false;
+            agent.speed = fleeSpeed * 0.5f;
+            SetFleeDestination(1.5f);
+            cooldownUntil = Time.time + 0.8f;
+        }
     }
 
     // Victory or the spawner thinning the numbers: back off into the dark and vanish.
