@@ -225,6 +225,29 @@ public static class EmberArt
     // The Om plate's material: unlit-transparent and emissive, so the glyph keeps its shape
     // in pitch darkness and blooms orange when the prayer is answered. PrayerSystem drives
     // _EmissionColor at runtime; these are the resting values.
+    /// <summary>The survivor's custom-shaded materials: the lantern flame and the locket glyph.
+    /// Public so the character pass can create them without regenerating every texture.</summary>
+    public static void EnsureSurvivorMaterials()
+    {
+        SurvivorMaterials();
+        AssetDatabase.SaveAssets();
+    }
+
+    static void SurvivorMaterials()
+    {
+        // Same asset as before, so every flame already in the scene picks up the new shader.
+        // LanternLight still drives _BaseColor per frame; the shader adds the shape and gradient.
+        var flame = GetOrCreate("Flame", Shader.Find("EMBER/LanternFlame"));
+        flame.SetColor("_BaseColor", new Color(4f, 1.9f, 0.55f));
+        EditorUtility.SetDirty(flame);
+
+        var glyph = GetOrCreate("OmGlyph", Shader.Find("EMBER/Glyph"));
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(SpriteDir + "/S_Om.png");
+        if (tex) glyph.SetTexture("_BaseMap", tex);
+        glyph.SetColor("_GlowColor", new Color(3.2f, 1.4f, 0.4f));
+        EditorUtility.SetDirty(glyph);
+    }
+
     static void OmMaterial()
     {
         var mat = GetOrCreate("OmSymbol", Shader.Find("Universal Render Pipeline/Unlit"));
@@ -502,7 +525,7 @@ public static class EmberArt
         var glass = Lit("LanternGlass", new Color(1f, 0.85f, 0.6f, 0.22f), 0.95f, null, Vector2.one);
         MakeTransparent(glass);
         Emissive(glass, new Color(1.1f, 0.5f, 0.16f));
-        Unlit("Flame", new Color(4f, 1.9f, 0.55f), false);
+        SurvivorMaterials();
 
         // Pickups and mission objects.
         Lit("FuelCan", new Color(0.46f, 0.14f, 0.08f), 0.45f, grain, Vector2.one, 0.35f);

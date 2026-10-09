@@ -57,7 +57,6 @@ public static class EmberCharacterBuilder
         p.model = model;
         var hips = Bone("Hips", model, new Vector3(0f, 0.98f, 0f));
         Part("Pelvis", PrimitiveType.Cube, hips, new Vector3(0f, -0.02f, 0f), new Vector3(0.33f, 0.2f, 0.22f), pants);
-        Part("CoatSkirt", PrimitiveType.Cube, hips, new Vector3(0f, -0.1f, -0.01f), new Vector3(0.4f, 0.32f, 0.27f), coat);
 
         var spine = Bone("Spine", hips, new Vector3(0f, 0.1f, 0f));
         Part("Belly", PrimitiveType.Cube, spine, new Vector3(0f, 0.08f, 0f), new Vector3(0.37f, 0.22f, 0.24f), coat);
@@ -89,11 +88,138 @@ public static class EmberCharacterBuilder
         BuildLantern(p, handL, player.transform);
         BuildSword(p, handR);
 
+        AddSurvivorDetails(player);
+
         p.cameraTarget = Bone("CameraTarget", player.transform, new Vector3(0f, 1.55f, 0f));
         BuildPrayerVisuals(p, player.transform);
 
         SetLayerRecursive(player, LayerMask.NameToLayer("Player"));
         return p;
+    }
+
+    // ------------------------------------------------------------------ survivor details
+
+    [MenuItem("EMBER/Build/2b. Survivor Details (apply to open scene)")]
+    public static void ApplySurvivorDetailsMenu()
+    {
+        var pc = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
+        if (!pc) { Debug.LogError("EMBER: no PlayerController in the open scene."); return; }
+        AddSurvivorDetails(pc.gameObject);
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(pc.gameObject.scene);
+        UnityEditor.SceneManagement.EditorSceneManager.SaveScene(pc.gameObject.scene);
+        Debug.Log("EMBER: survivor details applied and scene saved.");
+    }
+
+    /// <summary>
+    /// The cloth and kit from the character sheet: a long coat that flares from the hips in six
+    /// swinging panels, scarf tails, the sacred locket at the throat, and the lantern-raise IK.
+    /// Idempotent - it replaces its own previous output - so it can be run on an existing scene
+    /// without rebuilding the whole model, and is called from BuildModel for fresh builds.
+    /// </summary>
+    public static void AddSurvivorDetails(GameObject player)
+    {
+        EmberArt.EnsureSurvivorMaterials();
+        Transform Find(string n)
+        {
+            foreach (var t in player.GetComponentsInChildren<Transform>(true)) if (t.name == n) return t;
+            return null;
+        }
+        Transform hips = Find("Hips"), chest = Find("Chest"), model = Find("Model");
+        Transform legL = Find("UpperLegL"), legR = Find("UpperLegR");
+        if (!hips || !chest || !model || !legL || !legR) { Debug.LogError("EMBER: player rig not found."); return; }
+
+        // Earlier output, and the old rigid skirt box this replaces.
+        foreach (var n in new[] { "CoatSkirt", "CoatPanels", "ScarfTails", "Locket", "ThighColliderL", "ThighColliderR", "ChestCollider" })
+        {
+            var old = Find(n);
+            if (old) UnityEngine.Object.DestroyImmediate(old.gameObject);
+        }
+
+        Material coat = EmberArt.Load("Coat"), scarf = EmberArt.Load("Scarf"),
+                 brass = EmberArt.Load("LanternBrass"), glyphMat = EmberArt.Load("OmGlyph");
+
+        // Thigh and torso spheres the cloth is pushed out of.
+        var thighL = Bone("ThighColliderL", legL, new Vector3(0f, -0.22f, 0.01f));
+        var thighR = Bone("ThighColliderR", legR, new Vector3(0f, -0.22f, 0.01f));
+        var torso = Bone("ChestCollider", chest, new Vector3(0f, 0.08f, 0f));
+        var legs = new[] { new SpringChain.Sphere { centre = thighL, radius = 0.11f },
+                           new SpringChain.Sphere { centre = thighR, radius = 0.11f } };
+
+        // Coat skirt: front pair (open at the centre), sides, and a back pair split by a vent.
+        // Each hangs from the hip line with a slight outward flare and swings on its own.
+        var panels = Bone("CoatPanels", hips, Vector3.zero);
+        const float len = 0.38f, top = 0.04f;
+        (string n, Vector3 pivot, Vector3 flare, Vector3 size)[] defs =
+        {
+            ("FrontL", new Vector3(-0.1f, top, 0.13f),  new Vector3(-7f, 0f, 0f), new Vector3(0.18f, len, 0.03f)),
+            ("FrontR", new Vector3( 0.1f, top, 0.13f),  new Vector3(-7f, 0f, 0f), new Vector3(0.18f, len, 0.03f)),
+            ("SideL",  new Vector3(-0.2f, top, -0.01f), new Vector3(0f, 0f, -7f), new Vector3(0.03f, len, 0.25f)),
+            ("SideR",  new Vector3( 0.2f, top, -0.01f), new Vector3(0f, 0f, 7f),  new Vector3(0.03f, len, 0.25f)),
+            ("BackL",  new Vector3(-0.1f, top, -0.15f), new Vector3(7f, 0f, 0f),  new Vector3(0.2f, len, 0.03f)),
+            ("BackR",  new Vector3( 0.1f, top, -0.15f), new Vector3(7f, 0f, 0f),  new Vector3(0.2f, len, 0.03f)),
+        };
+        foreach (var d in defs)
+        {
+            var pivot = Bone("Coat" + d.n, panels, d.pivot);
+            pivot.localRotation = Quaternion.Euler(d.flare);
+            Part("Panel", PrimitiveType.Cube, pivot, new Vector3(0f, -len * 0.5f, 0f), d.size, coat);
+            var chain = pivot.gameObject.AddComponent<SpringChain>();
+            chain.bones = new[] { pivot };
+            chain.lengths = new[] { len };
+            chain.stiffness = 0.16f;
+            chain.damping = 0.2f;
+            chain.gravity = 0.5f;
+            chain.maxAngle = 50f;
+            chain.colliders = legs;
+        }
+
+        // Scarf tails: two loose ends from the knot, two segments each, slightly uneven.
+        var tails = Bone("ScarfTails", chest, Vector3.zero);
+        (string n, Vector3 pivot, float a, float b)[] tailDefs =
+        {
+            // Spread apart so the locket between them stays in view.
+            ("TailL", new Vector3(-0.09f, 0.21f, 0.15f), 0.13f, 0.12f),
+            ("TailR", new Vector3( 0.08f, 0.20f, 0.155f), 0.11f, 0.1f),
+        };
+        foreach (var t in tailDefs)
+        {
+            var s1 = Bone(t.n + "1", tails, t.pivot);
+            Part("Cloth", PrimitiveType.Cube, s1, new Vector3(0f, -t.a * 0.5f, 0f), new Vector3(0.07f, t.a, 0.02f), scarf);
+            var s2 = Bone(t.n + "2", s1, new Vector3(0f, -t.a, 0f));
+            Part("Cloth", PrimitiveType.Cube, s2, new Vector3(0f, -t.b * 0.5f, 0f), new Vector3(0.065f, t.b + 0.01f, 0.018f), scarf);
+            var chain = s1.gameObject.AddComponent<SpringChain>();
+            chain.bones = new[] { s1, s2 };
+            chain.lengths = new[] { t.a, t.b };
+            chain.stiffness = 0.08f;
+            chain.damping = 0.12f;
+            chain.gravity = 0.8f;
+            chain.maxAngle = 70f;
+            chain.colliders = new[] { new SpringChain.Sphere { centre = torso, radius = 0.15f } };
+        }
+
+        // The sacred locket, hung over the scarf just below the knot. Hidden until it is found.
+        var locket = Bone("Locket", chest, new Vector3(0f, 0.14f, 0.172f));
+        var worn = Bone("Worn", locket, Vector3.zero);
+        NoShadow(Part("Disc", PrimitiveType.Cylinder, worn, Vector3.zero, new Vector3(0.05f, 0.004f, 0.05f), brass, new Vector3(90f, 0f, 0f)));
+        // Quads face -Z; turned round so the Om reads the right way from in front.
+        var glyph = Part("OmGlyph", PrimitiveType.Quad, worn, new Vector3(0f, 0f, 0.0045f), new Vector3(0.042f, 0.042f, 1f), glyphMat, new Vector3(0f, 180f, 0f));
+        NoShadow(glyph);
+        var pendant = locket.gameObject.AddComponent<LocketPendant>();
+        pendant.visuals = worn.gameObject;
+        pendant.glyph = glyph.GetComponent<Renderer>();
+        worn.gameObject.SetActive(false);
+
+        // Lantern held up to light the way.
+        // Replaced rather than kept, so a re-run picks up changed defaults instead of the values
+        // serialized the first time.
+        var oldCarry = model.GetComponent<LanternCarry>();
+        if (oldCarry) UnityEngine.Object.DestroyImmediate(oldCarry);
+        model.gameObject.AddComponent<LanternCarry>();
+
+        int layer = LayerMask.NameToLayer("Player");
+        SetLayerRecursive(panels.gameObject, layer);
+        SetLayerRecursive(tails.gameObject, layer);
+        SetLayerRecursive(locket.gameObject, layer);
     }
 
     static Transform BuildArm(string side, Transform chest, float sign, Material coat, Material skin)
