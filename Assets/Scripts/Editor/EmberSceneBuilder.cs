@@ -31,6 +31,10 @@ public static class EmberSceneBuilder
         var cams = SetupCameras(player, level);
         var ui = EmberUIBuilder.Build();
         Wire(player, systems, cams, ui, level);
+        // The realistic survivor replaces the primitive model last, once the cameras and systems
+        // that reference its bones exist, so it can re-point them all.
+        if (RealisticSurvivor.Available)
+            RealisticSurvivor.ApplyToPlayer(Object.FindFirstObjectByType<PlayerController>().gameObject);
         ConfigureProject();
 
         EditorSceneManager.MarkSceneDirty(scene);

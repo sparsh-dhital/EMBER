@@ -1,0 +1,6 @@
+Survivor character credits
+Base human and standard assets generated with MakeHuman / MPFB (CC0).
+Coat (mindfront_cardigan_long_open_front), beanie (mindfront_knitted_hat_01), and boots (mindfront_shoes_biker_boots_male) by mindfront, licensed CC-BY. Assets adapted and textures tinted for EMBER.
+Motion capture from Carnegie Mellon University Motion Capture Database, http://mocap.cs.cmu.edu/.
+
+Mindfront assets are licensed under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/. Source homepage http://www.makehumancommunity.org/.

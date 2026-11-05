@@ -1,0 +1,156 @@
+{
+ "walk_careful": {
+  "clip": "77_28",
+  "first": 182,
+  "last": 214,
+  "loop": true,
+  "speed": 0.938,
+  "turn_deg": 7.6,
+  "cycle_s": 1.067
+ },
+ "walk": {
+  "clip": "35_01",
+  "first": 43,
+  "last": 78,
+  "loop": true,
+  "speed": 1.299,
+  "turn_deg": 1.1,
+  "cycle_s": 1.167
+ },
+ "walk_silent": {
+  "clip": "77_31",
+  "first": 4,
+  "last": 47,
+  "loop": true,
+  "speed": 0.057,
+  "turn_deg": 1.6,
+  "cycle_s": 1.433
+ },
+ "jog": {
+  "clip": "35_17",
+  "first": 13,
+  "last": 35,
+  "loop": true,
+  "speed": 3.174,
+  "turn_deg": 0.3,
+  "cycle_s": 0.733
+ },
+ "run": {
+  "clip": "09_02",
+  "error": "no cycle found",
+  "strikes": [
+   22
+  ]
+ },
+ "run_careful": {
+  "clip": "77_10",
+  "first": 61,
+  "last": 74,
+  "loop": true,
+  "speed": 3.811,
+  "turn_deg": 3.4,
+  "cycle_s": 0.433
+ },
+ "creep": {
+  "clip": "77_14",
+  "first": 65,
+  "last": 86,
+  "loop": true,
+  "speed": 1.198,
+  "turn_deg": 0.2,
+  "cycle_s": 0.7
+ },
+ "crawl": {
+  "clip": "111_03",
+  "first": 227,
+  "last": 248,
+  "loop": true,
+  "speed": 0.082,
+  "turn_deg": 7.7,
+  "cycle_s": 0.7
+ },
+ "idle_flashlight": {
+  "clip": "77_05",
+  "first": 32,
+  "last": 111,
+  "loop": true,
+  "speed": 0.0,
+  "length_s": 2.63,
+  "match": 0.0544
+ },
+ "idle_standing": {
+  "clip": "77_02",
+  "first": 84,
+  "last": 213,
+  "loop": true,
+  "speed": 0.0,
+  "length_s": 4.3,
+  "match": 0.0043
+ },
+ "jump": {
+  "clip": "16_01",
+  "segments": {
+   "JumpStart": [
+    25,
+    34
+   ],
+   "AirRise": [
+    34,
+    39
+   ],
+   "AirFall": [
+    39,
+    45
+   ],
+   "Land": [
+    45,
+    59
+   ]
+  }
+ },
+ "kneel": {
+  "clip": "23_03",
+  "hips_stand": 1.05,
+  "hips_low": 0.596,
+  "segments": {
+   "PrayEnter": [
+    9,
+    47
+   ],
+   "Pray": [
+    47,
+    125
+   ]
+  }
+ },
+ "sword": {
+  "clip": "02_07",
+  "slashes": [
+   {
+    "peak": 367,
+    "first": 354,
+    "last": 379,
+    "peak_speed": 2.11,
+    "hand_z_at_peak": 1.1983
+   },
+   {
+    "peak": 437,
+    "first": 425,
+    "last": 448,
+    "peak_speed": 1.78,
+    "hand_z_at_peak": 1.0565
+   },
+   {
+    "peak": 468,
+    "first": 455,
+    "last": 478,
+    "peak_speed": 1.78,
+    "hand_z_at_peak": 0.8193
+   }
+  ],
+  "guard": {
+   "first": 23,
+   "last": 27
+  }
+ }
+}
