@@ -16,6 +16,8 @@ public class PlayerAnimator : MonoBehaviour
     [Tooltip("Native speed (m/s) of each locomotion clip. Must match the blend tree thresholds.")]
     public float walkClipSpeed = 1.8f;
     public float crawlClipSpeed = 1.1f;
+    [Min(0f), Tooltip("Seconds used to smooth gait blending as movement speed changes.")]
+    public float speedDamping = 0.06f;
 
     [Header("Lean")]
     public float maxLean = 8f;
@@ -105,9 +107,9 @@ public class PlayerAnimator : MonoBehaviour
             // Clips are authored at native speeds; between them the blend tree interpolates and the playback
             // rate is scaled so feet don't slide at slow speeds.
             float nativeSpeed = controller.IsCrawling ? crawlClipSpeed : walkClipSpeed;
-            float mul = speed < nativeSpeed ? Mathf.Lerp(0.55f, 1f, speed / nativeSpeed) : 1f;
-            animator.SetFloat(SpeedId, speed, 0.06f, dt);
-            animator.SetFloat(MoveMulId, mul);
+            float mul = speed > 0.05f && speed < nativeSpeed ? Mathf.Lerp(0.55f, 1f, speed / Mathf.Max(0.01f, nativeSpeed)) : 1f;
+            animator.SetFloat(SpeedId, speed, speedDamping, dt);
+            animator.SetFloat(MoveMulId, mul, speedDamping, dt);
             animator.SetBool(GroundedId, controller.IsGrounded);
             animator.SetFloat(VerticalSpeedId, controller.VerticalSpeed);
             animator.SetBool(CrawlId, controller.IsCrawling);

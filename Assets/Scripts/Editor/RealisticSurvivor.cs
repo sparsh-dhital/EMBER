@@ -113,12 +113,12 @@ public static class RealisticSurvivor
         anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
         Transform B(HumanBodyBones b) => Bone(inst.transform, avatar, b);
-        Vector3 fwd = player.transform.forward;
-
-        // Face the player's forward.
+        // Humanoid retargeting faces +Z during playback. Keep the Animator root aligned
+        // with the player, even when the imported bind pose faces the other way.
+        // Attach carried props using the bind pose's forward so their local grip offsets
+        // follow the hands correctly when the Animator evaluates the first frame.
         Vector3 across = B(HumanBodyBones.RightUpperLeg).position - B(HumanBodyBones.LeftUpperLeg).position;
-        if (Vector3.Dot(Vector3.Cross(across, Vector3.up), fwd) < 0f)
-            inst.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+        Vector3 fwd = Vector3.Cross(across, Vector3.up).normalized;
 
         AssignMaterials(inst);
 
@@ -154,6 +154,7 @@ public static class RealisticSurvivor
             pa.animator = anim;
             pa.leanRoot = wrap;
             pa.walkClipSpeed = CarefulSpeed;
+            pa.speedDamping = 0.12f;
             pa.crawlClipSpeed = CrawlSpeed;
             pa.leftContact = 0.02f;
             pa.rightContact = 0.52f;
